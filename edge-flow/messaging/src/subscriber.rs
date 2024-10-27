@@ -13,7 +13,6 @@ pub trait Subscriber<T>: Send + Sync {
     async fn receive(&self, event: Event<T>) -> Result<(), Error>;
 }
 
-// Function subscriber implementation
 pub struct FunctionSubscriber<T, F> where F: Fn(Event<T>) -> Result<(), Error> + Send + Sync {
     handler: F,
     _phantom: PhantomData<T>,
@@ -38,7 +37,6 @@ impl<T, F> Subscriber<T>
     }
 }
 
-// Basic handler for testing
 pub struct TestHandler<T> {
     _phantom: PhantomData<T>,
 }

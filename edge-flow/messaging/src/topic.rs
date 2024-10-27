@@ -54,13 +54,12 @@ impl<T> Topic<T> where T: Serialize + for<'de> Deserialize<'de> + Clone + Send +
 
         for subscriber in subscribers.iter() {
             if let Err(err) = subscriber.receive(event.clone()).await {
-                let err_string = err.to_string(); // Convert to string before moving
+                let err_string = err.to_string();
                 error!("Error delivering message to subscriber: {}", err_string);
                 errors.push(err);
 
                 match self.config.delivery_guarantee {
                     crate::config::DeliveryGuarantee::AtLeastOnce => {
-                        // Log but continue with other subscribers
                         continue;
                     }
                     crate::config::DeliveryGuarantee::ExactlyOnce => {
@@ -72,7 +71,6 @@ impl<T> Topic<T> where T: Serialize + for<'de> Deserialize<'de> + Clone + Send +
             }
         }
 
-        // For AtLeastOnce, only return error if all subscribers failed
         if !errors.is_empty() && errors.len() == subscribers.len() {
             return Err(Error::Transport("All subscribers failed to receive message".to_string()));
         }
@@ -104,7 +102,6 @@ impl<T> Topic<T> where T: Serialize + for<'de> Deserialize<'de> + Clone + Send +
         &self.name
     }
 
-    // Add this method to peek at the number of subscribers (useful for testing)
     #[cfg(test)]
     pub(crate) async fn subscriber_count(&self) -> usize {
         self.subscribers.lock().await.len()

@@ -39,7 +39,7 @@ Add the library to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-edge-flow-messaging = "0.1.0"
+messaging = "0.1.0"
 ```
 
 Basic usage example:

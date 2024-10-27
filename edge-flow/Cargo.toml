@@ -1,7 +1,7 @@
 [workspace]
 
 members = [
-    "messaging/lib",
+    "messaging",
 ]
 
 resolver = "2"

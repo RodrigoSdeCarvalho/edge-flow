@@ -50,8 +50,6 @@ pub struct SubscriptionConfig<T> {
     pub retry_policy: RetryPolicy,
 }
 
-// Remove the Default implementation for SubscriptionConfig since it requires a handler
-// Instead provide a new() method
 impl<T> SubscriptionConfig<T> where T: Send + Sync + 'static {
     pub fn new(handler: Arc<dyn MessageHandler<T> + Send + Sync>) -> Self {
         Self {

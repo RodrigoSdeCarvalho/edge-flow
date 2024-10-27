@@ -145,4 +145,4 @@ fn process_temperature(temperature: Temperature) {
 
 ## Contributing
 
-We welcome contributions! See our [Contributing Guide](../CONTRIBUTING.md) for details.
+Contributions are welcome!

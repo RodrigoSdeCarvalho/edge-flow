@@ -1,0 +1,7 @@
+[workspace]
+
+members = [
+    "messaging/lib",
+]
+
+resolver = "2"

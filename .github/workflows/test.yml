@@ -1,0 +1,30 @@
+name: Test
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+    branches:
+      - '**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+
+      - name: Build
+        run: |
+          cd edge-flow && cargo build
+          # cargo install sqlx-cli --no-default-features --features postgres
+          # sqlx migrate run
+
+      - name: Run tests
+        run: |
+          cd edge-flow && cargo test

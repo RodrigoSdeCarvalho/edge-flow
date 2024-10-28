@@ -28,5 +28,8 @@ jobs:
       - name: Run tests
         run: |
           cd edge-flow && cargo test
-          cargo run --example temperature_monitor
+
+      - name: Run examples
+        run: |
+          cd edge-flow && cargo run --example temperature_monitor
           cargo run --example simple_subscriber

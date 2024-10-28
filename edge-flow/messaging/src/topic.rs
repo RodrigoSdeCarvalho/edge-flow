@@ -29,6 +29,33 @@ where
         }
     }
 
+    /**
+        TODO:
+        Implement comprehensive context and metadata population for traceability and observability.
+
+        1. **Context and Metadata Enrichment**: Ensure each published event has enriched metadata that includes:
+            - `correlation_id`: Unique ID for tracking the event across services and processes.
+            - `trace_id`: Unique identifier for tracing this event's journey within the system.
+            - `attributes`: Include additional attributes for system insights and debugging.
+
+        2. **Automatic Metadata Generation**: Enable automatic population of metadata fields by the system for every event.
+           The system should capture details like the originating source, event timestamps (creation, processing, delivery),
+           and any relevant system-generated identifiers.
+
+        3. **Tracing and Logging**: Each event should be logged in a way that allows tracking its entire lifecycle
+           (from creation through processing to delivery). This includes handling and logging delivery attempts and failures.
+
+        4. **Feedback Mechanism**: Implement a mechanism to return metadata to the event producer (via the client of
+           the publishing web service). This may involve providing feedback on event status, unique identifiers
+           (event_id, correlation_id, trace_id), and any errors encountered during processing.
+
+        5. **Delivery Guarantees Handling**: Ensure consistent handling of delivery guarantees:
+            - `AtLeastOnce`: Deliver to as many subscribers as possible, even if some fail.
+            - `ExactlyOnce`: Guarantee delivery to each subscriber exactly once or report a failure if any are unreachable.
+
+        These requirements will provide enhanced traceability, debugging support, and improve reliability within
+        the event publishing framework.
+    */
     pub async fn publish(&self, data: T) -> Result<String, Error> {
         let event_id = uuid::Uuid::new_v4().to_string();
         debug!(

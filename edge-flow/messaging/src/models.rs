@@ -2,6 +2,25 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+#[derive(Debug, Clone)]
+pub struct Context {
+    pub trace_id: Option<String>,
+    pub correlation_id: Option<String>,
+    pub deadline: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Event<T>
+where
+    T: Clone,
+{
+    pub data: Data<T>,
+    pub event_type: String,
+    pub event_id: String,
+    pub event_time: DateTime<Utc>,
+    pub ordering_key: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Data<T>
 where
@@ -18,25 +37,6 @@ pub struct Metadata {
     pub correlation_id: Option<String>,
     pub trace_id: Option<String>,
     pub attributes: HashMap<String, String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Event<T>
-where
-    T: Clone,
-{
-    pub data: Data<T>,
-    pub event_type: String,
-    pub event_id: String,
-    pub event_time: DateTime<Utc>,
-    pub ordering_key: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct Context {
-    pub trace_id: Option<String>,
-    pub correlation_id: Option<String>,
-    pub deadline: DateTime<Utc>,
 }
 
 #[cfg(test)]

@@ -302,7 +302,6 @@ mod tests {
 
         subscriber.receive(event).await.unwrap();
 
-        // Give some time for processing
         tokio::time::sleep(Duration::from_millis(100)).await;
         assert_eq!(counter.load(Ordering::SeqCst), 1);
     }
@@ -315,7 +314,6 @@ mod tests {
         let subscriber = BatchSubscriber::new(handler, 2, Duration::from_millis(100), 10);
         subscriber.start_processing().await.unwrap();
 
-        // Send multiple events
         for i in 0..3 {
             let event = Event {
                 data: Data {
@@ -336,7 +334,6 @@ mod tests {
             subscriber.receive(event).await.unwrap();
         }
 
-        // Give time for batch processing
         tokio::time::sleep(Duration::from_millis(300)).await;
         assert_eq!(counter.load(Ordering::SeqCst), 3);
     }

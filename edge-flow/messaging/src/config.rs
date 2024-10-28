@@ -1,6 +1,6 @@
-use std::time::Duration;
-use std::sync::Arc;
 use crate::subscriber::MessageHandler;
+use std::sync::Arc;
+use std::time::Duration;
 
 #[derive(Debug, Clone, Copy)]
 pub enum DeliveryGuarantee {
@@ -48,15 +48,20 @@ pub struct SubscriptionConfig<T> {
     pub max_concurrency: i32,
     pub ack_deadline: Duration,
     pub retry_policy: RetryPolicy,
+    pub delivery_guarantee: DeliveryGuarantee,
 }
 
-impl<T> SubscriptionConfig<T> where T: Send + Sync + 'static {
+impl<T> SubscriptionConfig<T>
+where
+    T: Send + Sync + 'static,
+{
     pub fn new(handler: Arc<dyn MessageHandler<T> + Send + Sync>) -> Self {
         Self {
             handler,
             max_concurrency: 1,
             ack_deadline: Duration::from_secs(30),
             retry_policy: RetryPolicy::default(),
+            delivery_guarantee: DeliveryGuarantee::AtLeastOnce,
         }
     }
 
@@ -74,14 +79,19 @@ impl<T> SubscriptionConfig<T> where T: Send + Sync + 'static {
         self.retry_policy = retry_policy;
         self
     }
+
+    pub fn with_delivery_guarantee(mut self, guarantee: DeliveryGuarantee) -> Self {
+        self.delivery_guarantee = guarantee;
+        self
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{ Event, Context };
-    use async_trait::async_trait;
     use crate::error::Error;
+    use crate::models::{Context, Event};
+    use async_trait::async_trait;
 
     struct TestHandler;
 

@@ -1,9 +1,12 @@
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use chrono::{ DateTime, Utc };
-use serde::{ Serialize, Deserialize };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Data<T> {
+pub struct Data<T>
+where
+    T: Clone,
+{
     pub value: T,
     pub timestamp: DateTime<Utc>,
     pub metadata: Metadata,
@@ -18,7 +21,10 @@ pub struct Metadata {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Event<T> {
+pub struct Event<T>
+where
+    T: Clone,
+{
     pub data: Data<T>,
     pub event_type: String,
     pub event_id: String,

@@ -1,3 +1,4 @@
+use crate::duration_unit::DurationUnit;
 use crate::subscriber::MessageHandler;
 use std::sync::Arc;
 use std::time::Duration;
@@ -37,7 +38,7 @@ impl Default for TopicConfig {
         Self {
             delivery_guarantee: DeliveryGuarantee::AtLeastOnce,
             ordering_attribute: None,
-            message_retention: Duration::from_secs(86400), // 24 hours
+            message_retention: Duration::from_secs(DurationUnit::Days.as_seconds() * 1),
         }
     }
 }

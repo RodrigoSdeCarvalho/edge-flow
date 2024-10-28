@@ -14,6 +14,14 @@ path = "examples/temperature_monitor.rs"
 name = "simple_subscriber"
 path = "examples/simple_subscriber.rs"
 
+[[example]]
+name = "service"
+path = "examples/service.rs"
+
+[[example]]
+name = "client"
+path = "examples/client.rs"
+
 [dependencies]
 tokio = { version = "1.32.0", features = ["full"] }
 async-trait = "0.1.73"
@@ -26,6 +34,10 @@ tracing = "0.1.37"
 futures = "0.3.28"
 backoff = { version = "0.4.0", features = ["tokio"] }
 tracing-subscriber = "0.3"
+axum = { version = "0.7.7", features = ["macros"]}
+hyper = "1.5.0"
+reqwest = { version = "0.12.8", features = ["json"] }
+dotenv = "0.15"
 
 [dev-dependencies]
 tokio-test = "0.4.3"

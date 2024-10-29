@@ -1,11 +1,9 @@
-use crate::prelude::duration_unit::DurationUnit;
-use crate::prelude::{config::*, Error, Topic, TopicConfig};
+use crate::prelude::{config::*, duration_unit::DurationUnit, Error, Topic, TopicConfig};
+use crate::service::PubSubService;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::time::Duration;
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LogMessage {
@@ -104,6 +102,21 @@ macro_rules! define_topics {
                 }
             }
         }
+
+        pub async fn subscribe_by_topic_name(
+            service: &PubSubService,
+            topic_name: &str,
+            callback_url: String
+        ) -> Result<(), Error> {
+            match topic_name {
+                $(
+                    stringify!($topic) => {
+                        service.bridge.create_subscription::<$type>(topic_name, callback_url).await
+                    },
+                )*
+                _ => Err(Error::Config(format!("Unknown topic: {}", topic_name)))
+            }
+        }
     };
 }
 
@@ -121,7 +134,7 @@ define_topics! {
         config: TopicConfig {
             delivery_guarantee: DeliveryGuarantee::ExactlyOnce,
             ordering_attribute: Some("timestamp".to_string()),
-            message_retention: Duration::from_secs(DurationUnit::Hours.as_seconds() * 1)
+            message_retention: Duration::from_secs(1)
         }
     },
     alerts => {

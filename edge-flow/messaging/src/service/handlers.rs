@@ -1,11 +1,11 @@
-use crate::service::PubSubService;
+use crate::service::{topics::subscribe_by_topic_name, PubSubService};
 use axum::{
     extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
 };
-use serde::{de::DeserializeOwned, Serialize};
+
 use serde_json::Value;
 use std::sync::Arc;
 
@@ -19,6 +19,7 @@ pub async fn publish(
     Path(topic_name): Path<String>,
     Json(raw_message): Json<Value>,
 ) -> impl IntoResponse {
+    println!("Publishing to topic: {}", topic_name);
     match service
         .topic_registry
         .try_publish_to(&topic_name, raw_message)
@@ -29,21 +30,16 @@ pub async fn publish(
     }
 }
 
-pub async fn subscribe<T>(
+pub async fn subscribe(
     State(service): State<Arc<PubSubService>>,
     Path(topic_name): Path<String>,
     Json(request): Json<SubscriptionRequest>,
-) -> impl IntoResponse
-where
-    T: 'static + Send + Sync + Serialize + DeserializeOwned + Clone,
-{
-    match service
-        .bridge
-        .create_subscription::<T>(&topic_name, request.callback_url)
-        .await
-    {
+) -> impl IntoResponse {
+    println!("Subscribing to topic: {}", topic_name);
+
+    match subscribe_by_topic_name(&service, &topic_name, request.callback_url).await {
         Ok(_) => StatusCode::OK.into_response(),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+        Err(e) => (StatusCode::BAD_REQUEST, e.to_string()).into_response(),
     }
 }
 

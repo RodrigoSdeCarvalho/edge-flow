@@ -49,6 +49,7 @@ struct WebhookHandler {
 
 impl WebhookHandler {
     fn new(callback_url: String) -> Self {
+        println!("Creating new WebhookHandler");
         Self {
             callback_url,
             client: reqwest::Client::new(),
@@ -62,6 +63,7 @@ where
     T: Send + Sync + Serialize + DeserializeOwned + Clone + 'static,
 {
     async fn handle(&self, _ctx: &Context, msg: Event<T>) -> Result<(), Error> {
+        println!("Sending message to: {}", self.callback_url);
         self.client
             .post(&self.callback_url)
             .json(&msg)

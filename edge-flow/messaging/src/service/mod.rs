@@ -31,10 +31,7 @@ impl PubSubService {
     pub async fn run(self, addr: SocketAddr) {
         let app = Router::new()
             .route("/topics/:topic/publish", post(handlers::publish))
-            .route(
-                "/topics/:topic/subscribe",
-                post(handlers::subscribe::<String>),
-            )
+            .route("/topics/:topic/subscribe", post(handlers::subscribe))
             .route("/topics", get(handlers::list_topics))
             .with_state(Arc::new(self));
 

@@ -6,6 +6,7 @@ use axum::{
     Json,
 };
 use serde::{de::DeserializeOwned, Serialize};
+use serde_json::Value;
 use std::sync::Arc;
 
 #[derive(serde::Deserialize)]
@@ -13,20 +14,18 @@ pub struct SubscriptionRequest {
     callback_url: String,
 }
 
-pub async fn publish<T>(
+pub async fn publish(
     State(service): State<Arc<PubSubService>>,
     Path(topic_name): Path<String>,
-    Json(message): Json<T>,
-) -> impl IntoResponse
-where
-    T: 'static + Send + Sync + Serialize + DeserializeOwned + Clone,
-{
-    match service.topic_registry.get::<T>(&topic_name).await {
-        Some(topic) => match topic.publish(message).await {
-            Ok(msg_id) => (StatusCode::OK, Json(msg_id)).into_response(),
-            Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
-        },
-        None => (StatusCode::NOT_FOUND, "Topic not found".to_string()).into_response(),
+    Json(raw_message): Json<Value>,
+) -> impl IntoResponse {
+    match service
+        .topic_registry
+        .try_publish_to(&topic_name, raw_message)
+        .await
+    {
+        Ok(msg_id) => (StatusCode::OK, Json(msg_id)).into_response(),
+        Err(e) => (StatusCode::BAD_REQUEST, e.to_string()).into_response(),
     }
 }
 
@@ -49,6 +48,6 @@ where
 }
 
 pub async fn list_topics(State(service): State<Arc<PubSubService>>) -> impl IntoResponse {
-    let topics = service.topic_registry.get_topic_names().await;
+    let topics = service.topic_registry.get_topic_names();
     Json(topics).into_response()
 }

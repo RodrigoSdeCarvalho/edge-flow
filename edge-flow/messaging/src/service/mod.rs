@@ -1,6 +1,6 @@
 mod bridge;
 mod handlers;
-mod topics;
+pub mod topics;
 
 use axum::{
     routing::{get, post},
@@ -30,7 +30,7 @@ impl PubSubService {
 
     pub async fn run(self, addr: SocketAddr) {
         let app = Router::new()
-            .route("/topics/:topic/publish", post(handlers::publish::<String>))
+            .route("/topics/:topic/publish", post(handlers::publish))
             .route(
                 "/topics/:topic/subscribe",
                 post(handlers::subscribe::<String>),

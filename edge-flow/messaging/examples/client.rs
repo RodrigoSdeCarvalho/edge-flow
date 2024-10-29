@@ -1,13 +1,6 @@
 use messaging::client::PubSubClient;
-use serde::{Deserialize, Serialize};
+use messaging::topics::LogMessage;
 use tracing::info;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct LogMessage {
-    level: String,
-    message: String,
-    timestamp: String,
-}
 
 #[tokio::main]
 async fn main() {
@@ -32,11 +25,14 @@ async fn main() {
         .await
         .expect("Failed to subscribe");
 
+    println!("Subscribed to logs");
+
     // Publish some test messages
     let log = LogMessage {
+        service: "test".to_string(),
         level: "INFO".to_string(),
         message: "Test message".to_string(),
-        timestamp: chrono::Utc::now().to_rfc3339(),
+        timestamp: chrono::Utc::now(),
     };
 
     let msg_id = publisher
@@ -46,5 +42,5 @@ async fn main() {
     info!("Published message with ID: {}", msg_id);
 
     // Keep the program running to see messages
-    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+    tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
 }

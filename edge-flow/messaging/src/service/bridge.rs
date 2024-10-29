@@ -28,9 +28,8 @@ impl ServiceBridge {
     {
         let topic = self
             .topic_registry
-            .get::<T>(topic_name)
-            .await
-            .ok_or_else(|| Error::Config("Topic not found".into()))?;
+            .get_topic_by_name::<T>(topic_name)
+            .ok_or_else(|| Error::Config("Topic not found or type mismatch".into()))?;
 
         let handler = Arc::new(WebhookHandler::new(callback_url));
         let subscriber =

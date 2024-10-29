@@ -1,9 +1,5 @@
-use messaging::{
-    prelude::{DeliveryGuarantee, TopicConfig},
-    service::PubSubService,
-};
+use messaging::service::PubSubService;
 use std::net::SocketAddr;
-use std::time::Duration;
 use tracing::info;
 
 #[tokio::main]
@@ -17,27 +13,6 @@ async fn main() {
 
     // Create service
     let service = PubSubService::new();
-
-    // Create some default topics
-    let config = TopicConfig {
-        delivery_guarantee: DeliveryGuarantee::AtLeastOnce,
-        ordering_attribute: None,
-        message_retention: Duration::from_secs(3600), // 1 hour
-    };
-
-    // Get topic registry from service and register some default topics
-    service
-        .topic_registry
-        .register::<String>("logs", config.clone())
-        .await;
-    service
-        .topic_registry
-        .register::<String>("metrics", config.clone())
-        .await;
-    service
-        .topic_registry
-        .register::<String>("alerts", config.clone())
-        .await;
 
     info!("Default topics registered");
 

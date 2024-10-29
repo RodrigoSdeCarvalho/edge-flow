@@ -10,6 +10,8 @@ use std::time::Duration;
 use tokio::time::timeout;
 use tracing::{debug, error, warn};
 
+// TODO: Use retry policy
+
 #[async_trait]
 pub trait MessageHandler<T>: Send + Sync
 where

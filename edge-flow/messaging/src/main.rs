@@ -1,67 +1,7 @@
 use dotenv::dotenv;
-use messaging::{
-    prelude::{DeliveryGuarantee, Error, TopicConfig},
-    service::PubSubService,
-};
-use std::{net::SocketAddr, time::Duration};
-use tracing::{error, info};
-
-pub mod default_topics {
-    use chrono::{DateTime, Utc};
-    use serde::{Deserialize, Serialize};
-
-    #[derive(Clone, Debug, Serialize, Deserialize)]
-    pub struct LogMessage {
-        pub level: String,
-        pub message: String,
-        pub timestamp: DateTime<Utc>,
-        pub service: String,
-    }
-
-    #[derive(Clone, Debug, Serialize, Deserialize)]
-    pub struct MetricMessage {
-        pub name: String,
-        pub value: f64,
-        pub unit: String,
-        pub timestamp: DateTime<Utc>,
-        pub tags: std::collections::HashMap<String, String>,
-    }
-
-    #[derive(Clone, Debug, Serialize, Deserialize)]
-    pub struct AlertMessage {
-        pub severity: String,
-        pub message: String,
-        pub timestamp: DateTime<Utc>,
-        pub source: String,
-        pub status: String,
-    }
-}
-
-async fn register_default_topics(service: &PubSubService) -> Result<(), Error> {
-    use default_topics::*;
-
-    let config = TopicConfig {
-        delivery_guarantee: DeliveryGuarantee::AtLeastOnce,
-        ordering_attribute: None,
-        message_retention: Duration::from_secs(3600), // 1 hour
-    };
-
-    service
-        .topic_registry
-        .register::<LogMessage>("logs", config.clone())
-        .await;
-    service
-        .topic_registry
-        .register::<MetricMessage>("metrics", config.clone())
-        .await;
-    service
-        .topic_registry
-        .register::<AlertMessage>("alerts", config.clone())
-        .await;
-
-    info!("Default topics registered: logs, metrics, alerts");
-    Ok(())
-}
+use messaging::{prelude::Error, service::PubSubService};
+use std::net::SocketAddr;
+use tracing::info;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
@@ -80,11 +20,6 @@ async fn main() -> Result<(), Error> {
     info!("Starting Edge Flow messaging service...");
 
     let service = PubSubService::new();
-
-    if let Err(e) = register_default_topics(&service).await {
-        error!("Failed to register default topics: {}", e);
-        return Err(e);
-    }
 
     let port = std::env::var("PORT")
         .map(|p| p.parse::<u16>().expect("Invalid PORT"))

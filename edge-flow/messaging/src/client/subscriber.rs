@@ -27,10 +27,8 @@ where
     where
         F: Fn(Event<T>) -> Result<(), Error> + Send + Sync + 'static + Clone,
     {
-        // Start local callback server
         let (addr, shutdown_tx) = self.start_callback_server(callback).await?;
 
-        // Subscribe to topic with our callback URL
         let callback_url = format!("http://{}", addr);
         let url = format!("{}/topics/{}/subscribe", self.base_url, topic);
 
@@ -56,7 +54,6 @@ where
         let (shutdown_tx, mut shutdown_rx) = tokio::sync::mpsc::channel(1);
         let callback = Arc::new(callback);
 
-        // Create router with callback handling
         let app = Router::new().route(
             "/",
             post(move |payload: Json<Event<T>>| {
@@ -100,6 +97,7 @@ pub struct SubscriptionHandle {
 
 impl Drop for SubscriptionHandle {
     fn drop(&mut self) {
+        println!("Dropping subscription handle");
         let shutdown_tx = self.shutdown_tx.clone();
         tokio::spawn(async move {
             let _ = shutdown_tx.send(()).await;

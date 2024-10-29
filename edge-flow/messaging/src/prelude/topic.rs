@@ -9,6 +9,36 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::{debug, error};
 
+// TODO: Implement retention policy & ordering attribute
+
+/**
+    TODO:
+    Implement comprehensive context and metadata population for traceability and observability.
+
+    1. **Context and Metadata Enrichment**: Ensure each published event has enriched metadata that includes:
+        - `correlation_id`: Unique ID for tracking the event across services and processes.
+        - `trace_id`: Unique identifier for tracing this event's journey within the system.
+        - `attributes`: Include additional attributes for system insights and debugging.
+
+    2. **Automatic Metadata Generation**: Enable automatic population of metadata fields by the system for every event.
+       The system should capture details like the originating source, event timestamps (creation, processing, delivery),
+       and any relevant system-generated identifiers.
+
+    3. **Tracing and Logging**: Each event should be logged in a way that allows tracking its entire lifecycle
+       (from creation through processing to delivery). This includes handling and logging delivery attempts and failures.
+
+    4. **Feedback Mechanism**: Implement a mechanism to return metadata to the event producer (via the client of
+       the publishing web service). This may involve providing feedback on event status, unique identifiers
+       (event_id, correlation_id, trace_id), and any errors encountered during processing.
+
+    5. **Delivery Guarantees Handling**: Ensure consistent handling of delivery guarantees:
+        - `AtLeastOnce`: Deliver to as many subscribers as possible, even if some fail.
+        - `ExactlyOnce`: Guarantee delivery to each subscriber exactly once or report a failure if any are unreachable.
+
+    These requirements will provide enhanced traceability, debugging support, and improve reliability within
+    the event publishing framework.
+*/
+
 pub struct Topic<T> {
     name: String,
     config: TopicConfig,
@@ -29,33 +59,6 @@ where
         }
     }
 
-    /**
-        TODO:
-        Implement comprehensive context and metadata population for traceability and observability.
-
-        1. **Context and Metadata Enrichment**: Ensure each published event has enriched metadata that includes:
-            - `correlation_id`: Unique ID for tracking the event across services and processes.
-            - `trace_id`: Unique identifier for tracing this event's journey within the system.
-            - `attributes`: Include additional attributes for system insights and debugging.
-
-        2. **Automatic Metadata Generation**: Enable automatic population of metadata fields by the system for every event.
-           The system should capture details like the originating source, event timestamps (creation, processing, delivery),
-           and any relevant system-generated identifiers.
-
-        3. **Tracing and Logging**: Each event should be logged in a way that allows tracking its entire lifecycle
-           (from creation through processing to delivery). This includes handling and logging delivery attempts and failures.
-
-        4. **Feedback Mechanism**: Implement a mechanism to return metadata to the event producer (via the client of
-           the publishing web service). This may involve providing feedback on event status, unique identifiers
-           (event_id, correlation_id, trace_id), and any errors encountered during processing.
-
-        5. **Delivery Guarantees Handling**: Ensure consistent handling of delivery guarantees:
-            - `AtLeastOnce`: Deliver to as many subscribers as possible, even if some fail.
-            - `ExactlyOnce`: Guarantee delivery to each subscriber exactly once or report a failure if any are unreachable.
-
-        These requirements will provide enhanced traceability, debugging support, and improve reliability within
-        the event publishing framework.
-    */
     pub async fn publish(&self, data: T) -> Result<String, Error> {
         let event_id = uuid::Uuid::new_v4().to_string();
         debug!(
@@ -82,7 +85,6 @@ where
 
         let subscribers = self.subscribers.lock().await;
 
-        // If no subscribers and ExactlyOnce, consider it a failure
         if subscribers.is_empty()
             && matches!(
                 self.config.delivery_guarantee,
@@ -99,24 +101,20 @@ where
 
         for subscriber in subscribers.iter() {
             match subscriber.receive(event.clone()).await {
-                Ok(_) => {
-                    match self.config.delivery_guarantee {
-                        crate::prelude::config::DeliveryGuarantee::AtLeastOnce => {
-                            any_success = true;
-                        }
-                        crate::prelude::config::DeliveryGuarantee::ExactlyOnce => {
-                            // Keep track but continue checking other subscribers
-                            any_success = true;
-                        }
+                Ok(_) => match self.config.delivery_guarantee {
+                    crate::prelude::config::DeliveryGuarantee::AtLeastOnce => {
+                        any_success = true;
                     }
-                }
+                    crate::prelude::config::DeliveryGuarantee::ExactlyOnce => {
+                        any_success = true;
+                    }
+                },
                 Err(err) => {
                     let err_string = err.to_string();
                     error!("Error delivering message to subscriber: {}", err_string);
 
                     match self.config.delivery_guarantee {
                         crate::prelude::config::DeliveryGuarantee::ExactlyOnce => {
-                            // For ExactlyOnce, fail immediately on first error
                             return Err(Error::Transport(format!(
                                 "Failed to deliver message: {}",
                                 err_string
@@ -140,7 +138,6 @@ where
                         err
                     )))
                 } else {
-                    // No subscribers case for AtLeastOnce
                     Ok(event_id)
                 }
             }
@@ -269,11 +266,11 @@ mod tests {
         });
 
         let subscriber = QueuedSubscriber::new(
-            handler.clone(), // Clone here
+            handler.clone(),
             SubscriptionConfig::new(handler)
                 .with_concurrency(1)
                 .with_ack_deadline(Duration::from_secs(1)),
-            10, // queue size
+            10,
         );
 
         subscriber.start_processing().await.unwrap();

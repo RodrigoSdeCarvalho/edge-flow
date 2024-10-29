@@ -25,6 +25,7 @@ where
     pub async fn publish(&self, topic: &str, message: T) -> Result<String, Error> {
         let url = format!("{}/topics/{}/publish", self.base_url, topic);
 
+        println!("Publishing message to topic: {}", topic);
         let response = self
             .client
             .post(&url)
@@ -32,6 +33,7 @@ where
             .send()
             .await
             .map_err(|e| Error::Transport(e.to_string()))?;
+        println!("response: {:?}", response);
 
         let message_id = response
             .json::<String>()

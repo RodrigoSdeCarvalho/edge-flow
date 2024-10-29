@@ -1,92 +1,135 @@
-use crate::prelude::{Topic, TopicConfig};
-use serde::{de::DeserializeOwned, Serialize};
-use std::any::{Any, TypeId};
+use crate::prelude::duration_unit::DurationUnit;
+use crate::prelude::{config::*, Error, Topic, TopicConfig};
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use std::time::Duration;
 
-#[derive(Serialize)]
-pub struct TopicInfo {
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct LogMessage {
+    pub level: String,
+    pub message: String,
+    pub timestamp: DateTime<Utc>,
+    pub service: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct MetricMessage {
     pub name: String,
-    pub type_name: String,
+    pub value: f64,
+    pub unit: String,
+    pub timestamp: DateTime<Utc>,
+    pub tags: HashMap<String, String>,
 }
 
-pub struct TopicWrapper {
-    inner: Arc<dyn Any + Send + Sync>,
-    type_id: TypeId,
-    type_name: &'static str,
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AlertMessage {
+    pub severity: String,
+    pub message: String,
+    pub timestamp: DateTime<Utc>,
+    pub source: String,
+    pub status: String,
 }
 
-impl TopicWrapper {
-    pub fn new<T>(topic: Arc<Topic<T>>) -> Self
-    where
-        T: 'static + Send + Sync,
-    {
-        Self {
-            inner: topic,
-            type_id: TypeId::of::<T>(),
-            type_name: std::any::type_name::<T>(),
+#[macro_export]
+macro_rules! define_topics {
+    (
+        $(
+            $topic:ident => {
+                type: $type:ty,
+                config: $config:expr
+            }
+        ),* $(,)?
+    ) => {
+        pub struct TopicRegistry {
+            $(
+                pub $topic: Arc<Topic<$type>>,
+            )*
         }
-    }
 
-    pub fn get_type_name(&self) -> &'static str {
-        self.type_name
-    }
+        impl TopicRegistry {
+            pub fn new() -> Self {
+                Self {
+                    $(
+                        $topic: Arc::new(Topic::new(
+                            stringify!($topic).to_string(),
+                            $config
+                        )),
+                    )*
+                }
+            }
 
-    pub fn downcast<T>(&self) -> Option<Arc<Topic<T>>>
-    where
-        T: 'static + Send + Sync,
-    {
-        if self.type_id == TypeId::of::<T>() {
-            Some(self.inner.clone().downcast::<Topic<T>>().unwrap())
-        } else {
-            None
+            pub async fn try_publish_to(&self, topic_name: &str, value: Value) -> Result<String, Error> {
+                match topic_name {
+                    $(
+                        stringify!($topic) => {
+                            match serde_json::from_value::<$type>(value.clone()) {
+                                Ok(msg) => self.$topic.publish(msg).await,
+                                Err(e) => Err(Error::Serialization(e))
+                            }
+                        },
+                    )*
+                    _ => Err(Error::Config(format!("Topic {} not found", topic_name)))
+                }
+            }
+
+            pub fn get_topic_names(&self) -> Vec<String> {
+                vec![
+                    $(stringify!($topic).to_string(),)*
+                ]
+            }
+
+            pub fn get_topic_by_name<T>(&self, name: &str) -> Option<&Arc<Topic<T>>>
+            where
+                T: 'static + Send + Sync
+            {
+                match name {
+                    $(
+                        stringify!($topic) => {
+                            let target_id = std::any::TypeId::of::<T>();
+                            let current_id = std::any::TypeId::of::<$type>();
+
+                            if target_id == current_id {
+                                Some(unsafe {
+                                    &*(&self.$topic as *const Arc<Topic<$type>> as *const Arc<Topic<T>>)
+                                })
+                            } else {
+                                None
+                            }
+                        },
+                    )*
+                    _ => None
+                }
+            }
         }
-    }
+    };
 }
 
-pub struct TopicRegistry {
-    topics: RwLock<HashMap<String, TopicWrapper>>,
-}
-
-impl TopicRegistry {
-    pub fn new() -> Self {
-        Self {
-            topics: RwLock::new(HashMap::new()),
+define_topics! {
+    logs => {
+        type: LogMessage,
+        config: TopicConfig {
+            delivery_guarantee: DeliveryGuarantee::AtLeastOnce,
+            ordering_attribute: None,
+            message_retention: Duration::from_secs(DurationUnit::Days.as_seconds() * 1)
         }
-    }
-
-    pub async fn register<T>(&self, name: &str, config: TopicConfig) -> Arc<Topic<T>>
-    where
-        T: 'static + Send + Sync + Serialize + DeserializeOwned + Clone,
-    {
-        let mut topics = self.topics.write().await;
-        let topic = Arc::new(Topic::new(name.to_string(), config));
-        topics.insert(name.to_string(), TopicWrapper::new(topic.clone()));
-        topic
-    }
-
-    pub async fn get<T>(&self, name: &str) -> Option<Arc<Topic<T>>>
-    where
-        T: 'static + Send + Sync + Clone,
-    {
-        let topics = self.topics.read().await;
-        topics.get(name).and_then(|t| t.downcast::<T>())
-    }
-
-    pub async fn get_topic_names(&self) -> Vec<String> {
-        let topics = self.topics.read().await;
-        topics.keys().cloned().collect()
-    }
-
-    pub async fn get_topics_info(&self) -> Vec<TopicInfo> {
-        let topics = self.topics.read().await;
-        topics
-            .iter()
-            .map(|(name, wrapper)| TopicInfo {
-                name: name.clone(),
-                type_name: wrapper.get_type_name().to_string(),
-            })
-            .collect()
+    },
+    metrics => {
+        type: MetricMessage,
+        config: TopicConfig {
+            delivery_guarantee: DeliveryGuarantee::ExactlyOnce,
+            ordering_attribute: Some("timestamp".to_string()),
+            message_retention: Duration::from_secs(DurationUnit::Hours.as_seconds() * 1)
+        }
+    },
+    alerts => {
+        type: AlertMessage,
+        config: TopicConfig {
+            delivery_guarantee: DeliveryGuarantee::AtLeastOnce,
+            ordering_attribute: Some("severity".to_string()),
+            message_retention: Duration::from_secs(DurationUnit::Weeks.as_seconds() * 1)
+        }
     }
 }

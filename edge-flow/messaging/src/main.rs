@@ -1,5 +1,8 @@
 use dotenv::dotenv;
-use messaging::{service::PubSubService, DeliveryGuarantee, Error, TopicConfig};
+use messaging::{
+    prelude::{DeliveryGuarantee, Error, TopicConfig},
+    service::PubSubService,
+};
 use std::{net::SocketAddr, time::Duration};
 use tracing::{error, info};
 

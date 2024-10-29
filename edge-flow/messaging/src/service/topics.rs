@@ -1,4 +1,4 @@
-use crate::{Topic, TopicConfig};
+use crate::prelude::{Topic, TopicConfig};
 use serde::{de::DeserializeOwned, Serialize};
 use std::any::{Any, TypeId};
 use std::collections::HashMap;

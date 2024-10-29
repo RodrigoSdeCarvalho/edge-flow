@@ -1,7 +1,7 @@
-use crate::config::TopicConfig;
-use crate::error::Error;
-use crate::models::{Data, Event, Metadata};
-use crate::subscriber::Subscriber;
+use crate::prelude::config::TopicConfig;
+use crate::prelude::error::Error;
+use crate::prelude::models::{Data, Event, Metadata};
+use crate::prelude::subscriber::Subscriber;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
@@ -86,7 +86,7 @@ where
         if subscribers.is_empty()
             && matches!(
                 self.config.delivery_guarantee,
-                crate::config::DeliveryGuarantee::ExactlyOnce
+                crate::prelude::config::DeliveryGuarantee::ExactlyOnce
             )
         {
             return Err(Error::Transport(
@@ -101,10 +101,10 @@ where
             match subscriber.receive(event.clone()).await {
                 Ok(_) => {
                     match self.config.delivery_guarantee {
-                        crate::config::DeliveryGuarantee::AtLeastOnce => {
+                        crate::prelude::config::DeliveryGuarantee::AtLeastOnce => {
                             any_success = true;
                         }
-                        crate::config::DeliveryGuarantee::ExactlyOnce => {
+                        crate::prelude::config::DeliveryGuarantee::ExactlyOnce => {
                             // Keep track but continue checking other subscribers
                             any_success = true;
                         }
@@ -115,14 +115,14 @@ where
                     error!("Error delivering message to subscriber: {}", err_string);
 
                     match self.config.delivery_guarantee {
-                        crate::config::DeliveryGuarantee::ExactlyOnce => {
+                        crate::prelude::config::DeliveryGuarantee::ExactlyOnce => {
                             // For ExactlyOnce, fail immediately on first error
                             return Err(Error::Transport(format!(
                                 "Failed to deliver message: {}",
                                 err_string
                             )));
                         }
-                        crate::config::DeliveryGuarantee::AtLeastOnce => {
+                        crate::prelude::config::DeliveryGuarantee::AtLeastOnce => {
                             last_error = Some(err);
                         }
                     }
@@ -131,7 +131,7 @@ where
         }
 
         match self.config.delivery_guarantee {
-            crate::config::DeliveryGuarantee::AtLeastOnce => {
+            crate::prelude::config::DeliveryGuarantee::AtLeastOnce => {
                 if any_success {
                     Ok(event_id)
                 } else if let Some(err) = last_error {
@@ -144,7 +144,7 @@ where
                     Ok(event_id)
                 }
             }
-            crate::config::DeliveryGuarantee::ExactlyOnce => {
+            crate::prelude::config::DeliveryGuarantee::ExactlyOnce => {
                 if any_success {
                     Ok(event_id)
                 } else {
@@ -197,9 +197,9 @@ impl<T> std::fmt::Debug for Topic<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{DeliveryGuarantee, SubscriptionConfig};
-    use crate::models::{Context, Event};
-    use crate::subscriber::{
+    use crate::prelude::config::{DeliveryGuarantee, SubscriptionConfig};
+    use crate::prelude::models::{Context, Event};
+    use crate::prelude::subscriber::{
         BatchMessageHandler, BatchSubscriber, MessageHandler, QueuedSubscriber,
     };
     use assert_matches::assert_matches;
@@ -255,7 +255,7 @@ mod tests {
     #[tokio::test]
     async fn test_topic_publish_subscribe() {
         let config = TopicConfig {
-            delivery_guarantee: crate::config::DeliveryGuarantee::AtLeastOnce,
+            delivery_guarantee: crate::prelude::config::DeliveryGuarantee::AtLeastOnce,
             ordering_attribute: None,
             message_retention: Duration::from_secs(60),
         };
@@ -332,7 +332,7 @@ mod tests {
     #[tokio::test]
     async fn test_at_least_once_delivery() {
         let config = TopicConfig {
-            delivery_guarantee: crate::config::DeliveryGuarantee::AtLeastOnce,
+            delivery_guarantee: crate::prelude::config::DeliveryGuarantee::AtLeastOnce,
             ordering_attribute: None,
             message_retention: Duration::from_secs(60),
         };
@@ -476,7 +476,7 @@ mod tests {
     #[tokio::test]
     async fn test_exactly_once_empty() {
         let config = TopicConfig {
-            delivery_guarantee: crate::config::DeliveryGuarantee::ExactlyOnce,
+            delivery_guarantee: crate::prelude::config::DeliveryGuarantee::ExactlyOnce,
             ordering_attribute: None,
             message_retention: Duration::from_secs(60),
         };

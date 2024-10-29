@@ -1,4 +1,4 @@
-use crate::{Error, Event};
+use crate::prelude::{Error, Event};
 use axum::{response::IntoResponse, routing::post, Json, Router};
 use serde::de::DeserializeOwned;
 use std::marker::PhantomData;

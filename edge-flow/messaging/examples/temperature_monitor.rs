@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use messaging::{
+use messaging::prelude::{
     config::SubscriptionConfig,
     models::{Context, Event},
     subscriber::{MessageHandler, QueuedSubscriber},

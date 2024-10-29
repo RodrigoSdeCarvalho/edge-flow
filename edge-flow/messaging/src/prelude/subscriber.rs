@@ -1,7 +1,7 @@
-use crate::config::{DeliveryGuarantee, SubscriptionConfig};
-use crate::error::Error;
-use crate::models::{Context, Event};
-use crate::queue::MessageQueue;
+use crate::prelude::config::{DeliveryGuarantee, SubscriptionConfig};
+use crate::prelude::error::Error;
+use crate::prelude::models::{Context, Event};
+use crate::prelude::queue::MessageQueue;
 use async_trait::async_trait;
 use chrono::Utc;
 use std::marker::PhantomData;
@@ -247,7 +247,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{Data, Metadata};
+    use crate::prelude::models::{Data, Metadata};
     use std::collections::HashMap;
     use std::sync::atomic::{AtomicUsize, Ordering};
 

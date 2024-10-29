@@ -1,5 +1,5 @@
-use crate::duration_unit::DurationUnit;
-use crate::subscriber::MessageHandler;
+use crate::prelude::duration_unit::DurationUnit;
+use crate::prelude::subscriber::MessageHandler;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -90,8 +90,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::error::Error;
-    use crate::models::{Context, Event};
+    use crate::prelude::error::Error;
+    use crate::prelude::models::{Context, Event};
     use async_trait::async_trait;
 
     struct TestHandler;

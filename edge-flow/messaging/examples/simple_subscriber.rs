@@ -1,4 +1,6 @@
-use messaging::{subscriber::FunctionSubscriber, DeliveryGuarantee, Error, Topic, TopicConfig};
+use messaging::prelude::{
+    subscriber::FunctionSubscriber, DeliveryGuarantee, Error, Topic, TopicConfig,
+};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
@@ -19,7 +21,7 @@ async fn main() -> Result<(), Error> {
     let topic: Topic<SimpleMessage> = Topic::new("simple-topic".to_string(), topic_config);
 
     // Create a simple subscriber with a closure
-    let subscriber = FunctionSubscriber::new(|event: messaging::Event<SimpleMessage>| {
+    let subscriber = FunctionSubscriber::new(|event: messaging::prelude::Event<SimpleMessage>| {
         println!("Received message: {}", event.data.value.content);
         Ok(())
     });

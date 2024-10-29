@@ -1,4 +1,7 @@
-use messaging::{service::PubSubService, DeliveryGuarantee, TopicConfig};
+use messaging::{
+    prelude::{DeliveryGuarantee, TopicConfig},
+    service::PubSubService,
+};
 use std::net::SocketAddr;
 use std::time::Duration;
 use tracing::info;

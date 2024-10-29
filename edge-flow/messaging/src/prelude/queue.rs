@@ -1,5 +1,5 @@
-use crate::error::Error;
-use crate::models::Event;
+use crate::prelude::error::Error;
+use crate::prelude::models::Event;
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::Duration;
@@ -119,7 +119,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{Data, Metadata};
+    use crate::prelude::models::{Data, Metadata};
     use chrono::Utc;
     use std::collections::HashMap;
 

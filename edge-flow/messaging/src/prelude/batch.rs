@@ -1,4 +1,4 @@
-use crate::{Error, Topic};
+use crate::prelude::{Error, Topic};
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -149,7 +149,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::TopicConfig;
+    use crate::prelude::TopicConfig;
     use std::time::Duration;
 
     #[derive(Debug, Clone, Serialize, Deserialize)]

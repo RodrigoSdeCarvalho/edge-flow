@@ -1,4 +1,4 @@
-use crate::Error;
+use crate::prelude::Error;
 use reqwest::Client;
 use serde::Serialize;
 use std::marker::PhantomData;

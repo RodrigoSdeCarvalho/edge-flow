@@ -2,6 +2,7 @@ mod publisher;
 mod subscriber;
 
 pub use publisher::Publisher;
+pub use subscriber::HandlerStore;
 pub use subscriber::Subscriber;
 
 use reqwest::Client;

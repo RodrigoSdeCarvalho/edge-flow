@@ -23,7 +23,12 @@ where
         }
     }
 
-    pub async fn subscribe<F>(&self, topic: &str, callback: F) -> Result<SubscriptionHandle, Error>
+    pub async fn subscribe<F>(
+        &self,
+        topic: &str,
+        handle_name: &str,
+        callback: F,
+    ) -> Result<SubscriptionHandle, Error>
     where
         F: Fn(Event<T>) -> Result<(), Error> + Send + Sync + 'static + Clone,
     {
@@ -41,7 +46,10 @@ where
             .await
             .map_err(|e| Error::Transport(e.to_string()))?;
 
-        Ok(SubscriptionHandle { shutdown_tx })
+        Ok(SubscriptionHandle::new(
+            handle_name.to_string(),
+            shutdown_tx,
+        ))
     }
 
     async fn start_callback_server<F>(
@@ -91,13 +99,24 @@ where
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct SubscriptionHandle {
+    name: String,
     shutdown_tx: tokio::sync::mpsc::Sender<()>,
+}
+
+impl SubscriptionHandle {
+    pub fn new(name: String, shutdown_tx: tokio::sync::mpsc::Sender<()>) -> Self {
+        Self { name, shutdown_tx }
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
 }
 
 impl Drop for SubscriptionHandle {
     fn drop(&mut self) {
-        println!("Dropping subscription handle");
         let shutdown_tx = self.shutdown_tx.clone();
         tokio::spawn(async move {
             let _ = shutdown_tx.send(()).await;
@@ -113,3 +132,48 @@ async fn find_available_port() -> Result<std::net::SocketAddr, Error> {
 }
 
 use axum::http::StatusCode;
+
+#[derive(Debug, Clone)]
+pub struct HandlerStore {
+    handlers: Vec<SubscriptionHandle>,
+}
+
+impl HandlerStore {
+    pub fn new() -> Self {
+        Self {
+            handlers: Vec::new(),
+        }
+    }
+
+    pub fn add_handler(&mut self, handler: SubscriptionHandle) {
+        self.handlers.push(handler);
+    }
+
+    pub fn remove_handler(&mut self, name: &str) {
+        self.handlers.retain(|h| h.name() != name);
+    }
+
+    pub async fn shutdown_all(&mut self) {
+        for handler in self.handlers.drain(..) {
+            let _ = handler.shutdown_tx.send(()).await;
+        }
+    }
+
+    fn get_shutdown_txs(&self) -> Vec<tokio::sync::mpsc::Sender<()>> {
+        self.handlers
+            .iter()
+            .map(|h| h.shutdown_tx.clone())
+            .collect()
+    }
+}
+
+impl Drop for HandlerStore {
+    fn drop(&mut self) {
+        let shutdown_txs = self.get_shutdown_txs();
+        tokio::spawn(async move {
+            for tx in shutdown_txs {
+                let _ = tx.send(()).await;
+            }
+        });
+    }
+}

@@ -267,7 +267,7 @@ mod tests {
 
         let subscriber = QueuedSubscriber::new(
             handler.clone(),
-            SubscriptionConfig::new(handler)
+            SubscriptionConfig::new()
                 .with_concurrency(1)
                 .with_ack_deadline(Duration::from_secs(1)),
             10,
@@ -307,7 +307,7 @@ mod tests {
 
         let subscriber = QueuedSubscriber::new(
             handler.clone(),
-            SubscriptionConfig::new(handler)
+            SubscriptionConfig::new()
                 .with_concurrency(1)
                 .with_ack_deadline(Duration::from_secs(1))
                 .with_delivery_guarantee(DeliveryGuarantee::ExactlyOnce), // Add this
@@ -344,22 +344,21 @@ mod tests {
         });
 
         let successful_subscriber = QueuedSubscriber::new(
-            successful_handler.clone(),
-            SubscriptionConfig::new(successful_handler)
+            successful_handler,
+            SubscriptionConfig::new()
                 .with_concurrency(1)
                 .with_ack_deadline(Duration::from_secs(1)),
             10,
         );
 
-        // Add a failing subscriber
         let failing_handler = Arc::new(TestHandler {
             counter: Arc::new(AtomicUsize::new(0)),
             should_fail: true,
         });
 
         let failing_subscriber = QueuedSubscriber::new(
-            failing_handler.clone(),
-            SubscriptionConfig::new(failing_handler)
+            failing_handler,
+            SubscriptionConfig::new()
                 .with_concurrency(1)
                 .with_ack_deadline(Duration::from_secs(1)),
             10,
@@ -436,7 +435,7 @@ mod tests {
 
             let subscriber = QueuedSubscriber::new(
                 handler.clone(), // Clone here
-                SubscriptionConfig::new(handler)
+                SubscriptionConfig::new()
                     .with_concurrency(1)
                     .with_ack_deadline(Duration::from_secs(1)),
                 10,

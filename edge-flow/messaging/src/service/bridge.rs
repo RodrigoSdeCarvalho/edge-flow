@@ -32,8 +32,7 @@ impl ServiceBridge {
             .ok_or_else(|| Error::Config("Topic not found or type mismatch".into()))?;
 
         let handler = Arc::new(WebhookHandler::new(callback_url));
-        let subscriber =
-            QueuedSubscriber::new(handler.clone(), SubscriptionConfig::new(handler), 1000);
+        let subscriber = QueuedSubscriber::new(handler.clone(), SubscriptionConfig::new(), 1000);
 
         subscriber.start_processing().await?;
         topic.subscribe(subscriber).await?;

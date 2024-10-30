@@ -1,6 +1,4 @@
 use crate::prelude::duration_unit::DurationUnit;
-use crate::prelude::subscriber::MessageHandler;
-use std::sync::Arc;
 use std::time::Duration;
 
 #[derive(Debug, Clone, Copy)]
@@ -44,21 +42,16 @@ impl Default for TopicConfig {
 }
 
 #[derive(Clone)]
-pub struct SubscriptionConfig<T> {
-    pub handler: Arc<dyn MessageHandler<T> + Send + Sync>,
+pub struct SubscriptionConfig {
     pub max_concurrency: i32,
     pub ack_deadline: Duration,
     pub retry_policy: RetryPolicy,
     pub delivery_guarantee: DeliveryGuarantee,
 }
 
-impl<T> SubscriptionConfig<T>
-where
-    T: Send + Sync + 'static,
-{
-    pub fn new(handler: Arc<dyn MessageHandler<T> + Send + Sync>) -> Self {
+impl SubscriptionConfig {
+    pub fn new() -> Self {
         Self {
-            handler,
             max_concurrency: 1,
             ack_deadline: Duration::from_secs(30),
             retry_policy: RetryPolicy::default(),
@@ -90,18 +83,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::prelude::error::Error;
-    use crate::prelude::models::{Context, Event};
-    use async_trait::async_trait;
-
-    struct TestHandler;
-
-    #[async_trait]
-    impl MessageHandler<String> for TestHandler {
-        async fn handle(&self, _ctx: &Context, _msg: Event<String>) -> Result<(), Error> {
-            Ok(())
-        }
-    }
 
     #[test]
     fn test_retry_policy_default() {
@@ -121,8 +102,7 @@ mod tests {
 
     #[test]
     fn test_subscription_config_builder() {
-        let handler = Arc::new(TestHandler);
-        let config = SubscriptionConfig::new(handler)
+        let config = SubscriptionConfig::new()
             .with_concurrency(5)
             .with_ack_deadline(Duration::from_secs(60))
             .with_retry_policy(RetryPolicy::default());

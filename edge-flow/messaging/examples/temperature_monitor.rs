@@ -71,7 +71,7 @@ async fn main() -> Result<(), Error> {
     // Create queued subscribers with different configurations
     let subscriber1 = QueuedSubscriber::new(
         handler1.clone(),
-        SubscriptionConfig::new(handler1)
+        SubscriptionConfig::new()
             .with_concurrency(2)
             .with_ack_deadline(Duration::from_secs(5))
             .with_delivery_guarantee(DeliveryGuarantee::ExactlyOnce),
@@ -80,7 +80,7 @@ async fn main() -> Result<(), Error> {
 
     let subscriber2 = QueuedSubscriber::new(
         handler2.clone(),
-        SubscriptionConfig::new(handler2)
+        SubscriptionConfig::new()
             .with_concurrency(1)
             .with_ack_deadline(Duration::from_secs(5))
             .with_delivery_guarantee(DeliveryGuarantee::ExactlyOnce),

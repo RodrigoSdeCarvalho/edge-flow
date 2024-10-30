@@ -12,6 +12,8 @@ use tracing::{debug, error, warn};
 
 // TODO: Use retry policy
 
+// TODO: Make Subscriber customizable and Batch use Config.
+
 #[async_trait]
 pub trait MessageHandler<T>: Send + Sync
 where
@@ -69,24 +71,22 @@ where
     }
 }
 
-pub struct QueuedSubscriber<T>
+pub struct QueuedSubscriber<T, H>
 where
     T: Clone + Send + Sync + 'static,
+    H: MessageHandler<T>,
 {
     queue: Arc<MessageQueue<T>>,
-    handler: Arc<dyn MessageHandler<T>>,
-    config: SubscriptionConfig<T>,
+    handler: Arc<H>,
+    config: SubscriptionConfig,
 }
 
-impl<T> QueuedSubscriber<T>
+impl<T, H> QueuedSubscriber<T, H>
 where
     T: Clone + Send + Sync + 'static,
+    H: MessageHandler<T> + 'static,
 {
-    pub fn new(
-        handler: Arc<dyn MessageHandler<T>>,
-        config: SubscriptionConfig<T>,
-        queue_size: usize,
-    ) -> Self {
+    pub fn new(handler: Arc<H>, config: SubscriptionConfig, queue_size: usize) -> Self {
         Self {
             queue: Arc::new(MessageQueue::new(queue_size)),
             handler,
@@ -139,9 +139,10 @@ where
 }
 
 #[async_trait]
-impl<T> Subscriber<T> for QueuedSubscriber<T>
+impl<T, H> Subscriber<T> for QueuedSubscriber<T, H>
 where
     T: Clone + Send + Sync + 'static,
+    H: MessageHandler<T>,
 {
     async fn receive(&self, event: Event<T>) -> Result<(), Error> {
         let is_exactly_once = matches!(
@@ -173,22 +174,24 @@ where
     }
 }
 
-pub struct BatchSubscriber<T>
+pub struct BatchSubscriber<T, H>
 where
     T: Clone + Send + Sync + 'static,
+    H: BatchMessageHandler<T>,
 {
     queue: Arc<MessageQueue<T>>,
-    handler: Arc<dyn BatchMessageHandler<T>>,
+    handler: Arc<H>,
     batch_size: usize,
     batch_timeout: Duration,
 }
 
-impl<T> BatchSubscriber<T>
+impl<T, H> BatchSubscriber<T, H>
 where
     T: Clone + Send + Sync + 'static,
+    H: BatchMessageHandler<T> + 'static,
 {
     pub fn new(
-        handler: Arc<dyn BatchMessageHandler<T>>,
+        handler: Arc<H>,
         batch_size: usize,
         batch_timeout: Duration,
         queue_size: usize,
@@ -237,9 +240,10 @@ where
 }
 
 #[async_trait]
-impl<T> Subscriber<T> for BatchSubscriber<T>
+impl<T, H> Subscriber<T> for BatchSubscriber<T, H>
 where
     T: Clone + Send + Sync + 'static,
+    H: BatchMessageHandler<T>,
 {
     async fn receive(&self, event: Event<T>) -> Result<(), Error> {
         self.queue.enqueue(event).await
@@ -278,7 +282,7 @@ mod tests {
         let counter = Arc::new(AtomicUsize::new(0));
         let handler = Arc::new(TestHandler(counter.clone()));
 
-        let config = SubscriptionConfig::new(handler.clone())
+        let config = SubscriptionConfig::new()
             .with_concurrency(2)
             .with_ack_deadline(Duration::from_secs(1));
 

@@ -5,7 +5,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{Mutex, RwLock};
 use tokio::time::interval;
-use tracing::{debug, error};
 
 #[derive(Debug, Clone)]
 pub struct BatchPublisherConfig {
@@ -75,15 +74,8 @@ where
                 let mut batch = current_batch.lock().await;
                 if !batch.is_empty() {
                     match Self::publish_batch(&topic, batch.drain(..).collect()).await {
-                        Ok(message_ids) => {
-                            debug!(
-                                "Successfully published batch of {} messages",
-                                message_ids.len()
-                            );
-                        }
-                        Err(e) => {
-                            error!("Failed to publish batch: {}", e);
-                        }
+                        Ok(message_ids) => {}
+                        Err(e) => {}
                     }
                 }
             }
@@ -136,7 +128,6 @@ where
             match topic.publish(message).await {
                 Ok(id) => message_ids.push(id),
                 Err(e) => {
-                    error!("Failed to publish message in batch: {}", e);
                     return Err(e);
                 }
             }

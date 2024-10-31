@@ -4,7 +4,6 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
-use tracing::warn;
 
 pub struct MessageQueue<T>
 where
@@ -47,13 +46,7 @@ where
             queue.push_back(event.clone());
         }
 
-        if to_enqueue < events.len() {
-            warn!(
-                "Queue capacity reached. Enqueued {} out of {} events",
-                to_enqueue,
-                events.len()
-            );
-        }
+        if to_enqueue < events.len() {}
 
         Ok(to_enqueue)
     }

@@ -8,12 +8,26 @@ use axum::{
 
 use serde_json::Value;
 use std::sync::Arc;
+use utoipa::ToSchema;
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, ToSchema)]
 pub struct SubscriptionRequest {
     callback_url: String,
 }
 
+/// Publish a message to a topic
+#[utoipa::path(
+    post,
+    path = "/topics/{topic}/publish",
+    params(
+        ("topic" = String, Path, description = "Name of the topic")
+    ),
+    request_body = Value,
+    responses(
+        (status = 200, description = "Message published successfully", body = String),
+        (status = 400, description = "Bad request", body = String)
+    )
+)]
 pub async fn publish(
     State(service): State<Arc<PubSubService>>,
     Path(topic_name): Path<String>,
@@ -30,6 +44,19 @@ pub async fn publish(
     }
 }
 
+/// Subscribe to a topic
+#[utoipa::path(
+    post,
+    path = "/topics/{topic}/subscribe",
+    params(
+        ("topic" = String, Path, description = "Name of the topic")
+    ),
+    request_body = SubscriptionRequest,
+    responses(
+        (status = 200, description = "Subscription created successfully"),
+        (status = 400, description = "Bad request", body = String)
+    )
+)]
 pub async fn subscribe(
     State(service): State<Arc<PubSubService>>,
     Path(topic_name): Path<String>,
@@ -43,6 +70,14 @@ pub async fn subscribe(
     }
 }
 
+/// List all topics
+#[utoipa::path(
+    get,
+    path = "/topics",
+    responses(
+        (status = 200, description = "List of topics", body = Vec<String>)
+    )
+)]
 pub async fn list_topics(State(service): State<Arc<PubSubService>>) -> impl IntoResponse {
     let topics = service.topic_registry.get_topic_names();
     Json(topics).into_response()

@@ -8,7 +8,6 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::timeout;
-use tracing::{debug, error, warn};
 
 // TODO: Use retry policy
 
@@ -117,15 +116,11 @@ where
                         };
 
                         match timeout(ack_deadline, handler.handle(&ctx, event.clone())).await {
-                            Ok(Ok(_)) => {
-                                debug!("Successfully processed message {}", event.event_id);
-                            }
-                            Ok(Err(e)) => {
-                                error!("Error processing message {}: {}", event.event_id, e);
+                            Ok(Ok(_)) => {}
+                            Ok(Err(_)) => {
                                 // Handle retry logic here if needed
                             }
                             Err(_) => {
-                                warn!("Message {} processing timed out", event.event_id);
                                 // Handle timeout retry logic here if needed
                             }
                         }
@@ -224,12 +219,8 @@ where
                     };
 
                     match handler.handle_batch(&ctx, batch.clone()).await {
-                        Ok(_) => {
-                            debug!("Successfully processed batch of {} messages", batch.len());
-                        }
-                        Err(e) => {
-                            error!("Error processing batch: {}", e);
-                        }
+                        Ok(_) => {}
+                        Err(e) => {}
                     }
                 }
             }

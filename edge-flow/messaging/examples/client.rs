@@ -1,13 +1,8 @@
 use messaging::client::{HandlerStore, PubSubClient};
 use messaging::topics::LogMessage;
-use tracing::info;
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::INFO)
-        .init();
-
     let client = PubSubClient::new("http://localhost:3000".to_string());
     let publisher = client.publisher::<LogMessage>();
     let mut store = HandlerStore::new();
@@ -15,7 +10,8 @@ async fn main() {
     let subscriber = client.subscriber::<LogMessage>();
     let handle_logs = subscriber
         .subscribe("logs", "handle_logs", |event| {
-            info!("Received log: {:?}", event.data.value);
+            println!("Received event: {:?}", event);
+            println!("Message: {:?}", event.event_id);
             Ok(())
         })
         .await
@@ -33,7 +29,7 @@ async fn main() {
         .publish("logs", log)
         .await
         .expect("Failed to publish");
-    info!("Published message with ID: {}", msg_id);
+    println!("Published message with ID: {}", msg_id);
 
     tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
 }

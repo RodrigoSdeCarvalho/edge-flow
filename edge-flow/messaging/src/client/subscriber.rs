@@ -3,7 +3,6 @@ use axum::{response::IntoResponse, routing::post, Json, Router};
 use serde::de::DeserializeOwned;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use tracing::{error, info};
 
 pub struct Subscriber<T> {
     base_url: String,
@@ -69,10 +68,7 @@ where
                 async move {
                     match callback(payload.0) {
                         Ok(_) => StatusCode::OK.into_response(),
-                        Err(e) => {
-                            error!("Error processing event: {}", e);
-                            StatusCode::INTERNAL_SERVER_ERROR.into_response()
-                        }
+                        Err(e) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
                     }
                 }
             }),
@@ -90,7 +86,6 @@ where
             tokio::select! {
                 _ = server => {},
                 _ = shutdown_rx.recv() => {
-                    info!("Shutting down callback server");
                 },
             }
         });

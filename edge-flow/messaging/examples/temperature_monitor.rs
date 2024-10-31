@@ -8,7 +8,6 @@ use messaging::prelude::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::{error, info};
 
 // Define our message type
 #[derive(Clone, Serialize, Deserialize)]
@@ -27,17 +26,6 @@ struct TemperatureHandler {
 #[async_trait]
 impl MessageHandler<TemperatureReading> for TemperatureHandler {
     async fn handle(&self, _: &Context, msg: Event<TemperatureReading>) -> Result<(), Error> {
-        info!(
-            "Handler '{}' received temperature reading: {:.1}°{} from sensor {} at {} (message ID: {})", 
-            self.name,
-            msg.data.value.temperature,
-            msg.data.value.unit,
-            msg.data.value.sensor_id,
-            msg.data.value.timestamp,
-            msg.event_id
-        );
-
-        // Simulate some processing
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         Ok(())
@@ -46,9 +34,6 @@ impl MessageHandler<TemperatureReading> for TemperatureHandler {
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    // Initialize tracing for logging
-    tracing_subscriber::fmt::init();
-
     // Create a topic with exactly-once delivery guarantee
     let topic_config = TopicConfig {
         delivery_guarantee: DeliveryGuarantee::ExactlyOnce,
@@ -95,8 +80,6 @@ async fn main() -> Result<(), Error> {
     topic.subscribe(subscriber1).await?;
     topic.subscribe(subscriber2).await?;
 
-    info!("Starting temperature monitoring...");
-
     // Simulate publishing some temperature readings
     let readings = vec![
         TemperatureReading {
@@ -122,12 +105,8 @@ async fn main() -> Result<(), Error> {
     // Publish readings with some delay between them
     for reading in readings {
         match topic.publish(reading).await {
-            Ok(msg_id) => {
-                info!("Published message with ID: {}", msg_id);
-            }
-            Err(e) => {
-                error!("Failed to publish message: {}", e);
-            }
+            Ok(msg_id) => {}
+            Err(e) => {}
         }
 
         // Wait a bit between messages
@@ -135,9 +114,7 @@ async fn main() -> Result<(), Error> {
     }
 
     // Keep the program running to see the processing
-    info!("Waiting for message processing...");
     tokio::time::sleep(Duration::from_secs(5)).await;
 
-    info!("Shutting down...");
     Ok(())
 }

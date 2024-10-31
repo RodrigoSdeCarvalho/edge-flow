@@ -1,23 +1,10 @@
 use dotenv::dotenv;
 use messaging::{prelude::Error, service::PubSubService};
 use std::net::SocketAddr;
-use tracing::info;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     dotenv().ok();
-
-    tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::INFO)
-        .with_thread_ids(true)
-        .with_target(false)
-        .with_file(true)
-        .with_line_number(true)
-        .with_thread_names(true)
-        .with_ansi(true)
-        .init();
-
-    info!("Starting Edge Flow messaging service...");
 
     let service = PubSubService::new();
 
@@ -31,13 +18,6 @@ async fn main() -> Result<(), Error> {
         .expect("Invalid BIND_ADDRESS");
 
     let addr = SocketAddr::new(addr.ip(), port);
-
-    info!("Starting server on {}", addr);
-    info!("Available topics: logs, metrics, alerts");
-    info!("Default topics support the following message types:");
-    info!("  - logs: LogMessage (level, message, timestamp, service)");
-    info!("  - metrics: MetricMessage (name, value, unit, timestamp, tags)");
-    info!("  - alerts: AlertMessage (severity, message, timestamp, source, status)");
 
     service.run(addr).await;
 

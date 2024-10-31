@@ -7,7 +7,6 @@ use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tracing::{debug, error};
 
 // TODO: Implement retention policy & ordering attribute
 
@@ -61,10 +60,6 @@ where
 
     pub async fn publish(&self, data: T) -> Result<String, Error> {
         let event_id = uuid::Uuid::new_v4().to_string();
-        debug!(
-            "Publishing message with id {} to topic {}",
-            event_id, self.name
-        );
 
         let event = Event {
             data: Data {
@@ -111,7 +106,6 @@ where
                 },
                 Err(err) => {
                     let err_string = err.to_string();
-                    error!("Error delivering message to subscriber: {}", err_string);
 
                     match self.config.delivery_guarantee {
                         crate::prelude::config::DeliveryGuarantee::ExactlyOnce => {

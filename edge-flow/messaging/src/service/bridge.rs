@@ -8,12 +8,12 @@ use async_trait::async_trait;
 use serde::{de::DeserializeOwned, Serialize};
 use std::sync::Arc;
 
-pub struct ServiceBridge {
-    topic_registry: Arc<TopicRegistry>,
+pub struct ServiceBridge<'a> {
+    topic_registry: Arc<TopicRegistry<'a>>,
 }
 
-impl ServiceBridge {
-    pub fn new(topic_registry: Arc<TopicRegistry>) -> Self {
+impl<'a> ServiceBridge<'a> {
+    pub fn new(topic_registry: Arc<TopicRegistry<'a>>) -> Self {
         Self { topic_registry }
     }
 

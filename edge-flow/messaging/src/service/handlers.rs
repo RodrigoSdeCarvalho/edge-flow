@@ -28,8 +28,8 @@ pub struct SubscriptionRequest {
         (status = 400, description = "Bad request", body = String)
     )
 )]
-pub async fn publish(
-    State(service): State<Arc<PubSubService>>,
+pub async fn publish<'a>(
+    State(service): State<Arc<PubSubService<'a>>>,
     Path(topic_name): Path<String>,
     Json(raw_message): Json<Value>,
 ) -> impl IntoResponse {
@@ -57,8 +57,8 @@ pub async fn publish(
         (status = 400, description = "Bad request", body = String)
     )
 )]
-pub async fn subscribe(
-    State(service): State<Arc<PubSubService>>,
+pub async fn subscribe<'a>(
+    State(service): State<Arc<PubSubService<'a>>>,
     Path(topic_name): Path<String>,
     Json(request): Json<SubscriptionRequest>,
 ) -> impl IntoResponse {
@@ -78,7 +78,7 @@ pub async fn subscribe(
         (status = 200, description = "List of topics", body = Vec<String>)
     )
 )]
-pub async fn list_topics(State(service): State<Arc<PubSubService>>) -> impl IntoResponse {
+pub async fn list_topics<'a>(State(service): State<Arc<PubSubService<'a>>>) -> impl IntoResponse {
     let topics = service.topic_registry.get_topic_names();
     Json(topics).into_response()
 }

@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 // Define our message type
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct TemperatureReading {
     sensor_id: String,
     temperature: f64,
@@ -19,6 +19,7 @@ struct TemperatureReading {
 }
 
 // Define handlers for temperature readings
+#[derive(Clone)]
 struct TemperatureHandler {
     name: String,
 }
@@ -27,6 +28,8 @@ struct TemperatureHandler {
 impl MessageHandler<TemperatureReading> for TemperatureHandler {
     async fn handle(&self, _: &Context, msg: Event<TemperatureReading>) -> Result<(), Error> {
         tokio::time::sleep(Duration::from_millis(100)).await;
+
+        println!("{}: Received message: {:?}", self.name, msg);
 
         Ok(())
     }
@@ -105,8 +108,12 @@ async fn main() -> Result<(), Error> {
     // Publish readings with some delay between them
     for reading in readings {
         match topic.publish(reading).await {
-            Ok(msg_id) => {}
-            Err(e) => {}
+            Ok(msg_id) => {
+                println!("Published message with ID: {}", msg_id);
+            }
+            Err(e) => {
+                println!("Error publishing message: {:?}", e);
+            }
         }
 
         // Wait a bit between messages

@@ -1,12 +1,12 @@
-use crate::prelude::config::{DeliveryGuarantee, SubscriptionConfig};
-use crate::prelude::error::Error;
-use crate::prelude::models::{Context, Event};
-use crate::prelude::queue::MessageQueue;
+use crate::prelude::{
+    config::{DeliveryGuarantee, SubscriptionConfig},
+    error::Error,
+    models::{Context, Event},
+    queue::MessageQueue,
+};
 use async_trait::async_trait;
 use chrono::Utc;
-use std::marker::PhantomData;
-use std::sync::Arc;
-use std::time::Duration;
+use std::{marker::PhantomData, sync::Arc, time::Duration};
 use tokio::time::timeout;
 
 // TODO: Use retry policy
@@ -30,9 +30,9 @@ where
 }
 
 #[async_trait]
-pub trait Subscriber<T>: Send + Sync
+pub trait Subscriber<'a, T>: Send + Sync
 where
-    T: Clone + Send + Sync + 'static,
+    T: Clone + Send + Sync,
 {
     async fn receive(&self, event: Event<T>) -> Result<(), Error>;
 }
@@ -60,9 +60,9 @@ where
 }
 
 #[async_trait]
-impl<T, F> Subscriber<T> for FunctionSubscriber<T, F>
+impl<'a, T, F> Subscriber<'a, T> for FunctionSubscriber<T, F>
 where
-    T: Clone + Send + Sync + 'static,
+    T: Clone + Send + Sync,
     F: Fn(Event<T>) -> Result<(), Error> + Send + Sync,
 {
     async fn receive(&self, event: Event<T>) -> Result<(), Error> {
@@ -134,7 +134,7 @@ where
 }
 
 #[async_trait]
-impl<T, H> Subscriber<T> for QueuedSubscriber<T, H>
+impl<'a, T, H> Subscriber<'a, T> for QueuedSubscriber<T, H>
 where
     T: Clone + Send + Sync + 'static,
     H: MessageHandler<T>,
@@ -220,7 +220,9 @@ where
 
                     match handler.handle_batch(&ctx, batch.clone()).await {
                         Ok(_) => {}
-                        Err(e) => {}
+                        Err(e) => {
+                            println!("Error in batch handler: {:?}", e);
+                        }
                     }
                 }
             }
@@ -231,7 +233,7 @@ where
 }
 
 #[async_trait]
-impl<T, H> Subscriber<T> for BatchSubscriber<T, H>
+impl<'a, T, H> Subscriber<'a, T> for BatchSubscriber<T, H>
 where
     T: Clone + Send + Sync + 'static,
     H: BatchMessageHandler<T>,

@@ -41,13 +41,13 @@ macro_rules! define_topics {
             }
         ),* $(,)?
     ) => {
-        pub struct TopicRegistry {
+        pub struct TopicRegistry<'a> {
             $(
-                pub $topic: Arc<Topic<$type>>,
+                pub $topic: Arc<Topic<'a, $type>>,
             )*
         }
 
-        impl TopicRegistry {
+        impl<'a> TopicRegistry<'a> {
             pub fn new() -> Self {
                 Self {
                     $(
@@ -103,8 +103,8 @@ macro_rules! define_topics {
             }
         }
 
-        pub async fn subscribe_by_topic_name(
-            service: &PubSubService,
+        pub async fn subscribe_by_topic_name<'a>(
+            service: &PubSubService<'a>,
             topic_name: &str,
             callback_url: String
         ) -> Result<(), Error> {

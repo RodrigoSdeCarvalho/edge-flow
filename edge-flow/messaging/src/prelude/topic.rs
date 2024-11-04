@@ -4,8 +4,6 @@ use crate::prelude::models::{Data, Event, Metadata};
 use crate::prelude::subscriber::Subscriber;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
-use std::marker::PhantomData;
-use std::sync::Arc;
 use tokio::sync::Mutex;
 
 // TODO: Implement retention policy & ordering attribute
@@ -38,23 +36,21 @@ use tokio::sync::Mutex;
     the event publishing framework.
 */
 
-pub struct Topic<T> {
+pub struct Topic<'a, T> {
     name: String,
     config: TopicConfig,
-    _phantom: PhantomData<T>,
-    subscribers: Arc<Mutex<Vec<Box<dyn Subscriber<T> + Send + Sync>>>>,
+    subscribers: Mutex<Vec<Box<dyn Subscriber<'a, T> + Send + Sync + 'a>>>,
 }
 
-impl<T> Topic<T>
+impl<'a, T> Topic<'a, T>
 where
-    T: Serialize + for<'de> Deserialize<'de> + Clone + Send + Sync + 'static,
+    T: Serialize + for<'de> Deserialize<'de> + Clone + Send + Sync + 'a,
 {
     pub fn new(name: String, config: TopicConfig) -> Self {
         Self {
             name,
             config,
-            _phantom: PhantomData,
-            subscribers: Arc::new(Mutex::new(Vec::new())),
+            subscribers: Mutex::new(Vec::new()),
         }
     }
 
@@ -149,7 +145,7 @@ where
 
     pub async fn subscribe<S>(&self, subscriber: S) -> Result<(), Error>
     where
-        S: Subscriber<T> + Send + Sync + 'static,
+        S: Subscriber<'a, T> + Send + Sync + 'a,
     {
         let mut subscribers = self.subscribers.lock().await;
         subscribers.push(Box::new(subscriber));
@@ -176,7 +172,7 @@ where
     }
 }
 
-impl<T> std::fmt::Debug for Topic<T> {
+impl<'a, T> std::fmt::Debug for Topic<'a, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Topic")
             .field("name", &self.name)

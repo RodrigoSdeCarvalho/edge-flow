@@ -68,7 +68,10 @@ where
                 async move {
                     match callback(payload.0) {
                         Ok(_) => StatusCode::OK.into_response(),
-                        Err(e) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+                        Err(e) => {
+                            println!("Error in callback: {:?}", e);
+                            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+                        }
                     }
                 }
             }),

@@ -1,15 +1,13 @@
 use async_trait::async_trait;
 use messaging::prelude::{
     config::SubscriptionConfig,
-    models::{Context, Event},
-    subscriber::{MessageHandler, QueuedSubscriber},
+    models::Event,
+    subscriber::{MessageHandler, QueuedSubscriber, Subscribers},
     DeliveryGuarantee, Error, Topic, TopicConfig,
 };
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use std::time::Duration;
 
-// Define our message type
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct TemperatureReading {
     sensor_id: String,
@@ -18,72 +16,39 @@ struct TemperatureReading {
     timestamp: chrono::DateTime<chrono::Utc>,
 }
 
-// Define handlers for temperature readings
-#[derive(Clone)]
-struct TemperatureHandler {
-    name: String,
-}
+struct TemperatureHandler;
 
 #[async_trait]
 impl MessageHandler<TemperatureReading> for TemperatureHandler {
-    async fn handle(&self, _: &Context, msg: Event<TemperatureReading>) -> Result<(), Error> {
-        tokio::time::sleep(Duration::from_millis(100)).await;
-
-        println!("{}: Received message: {:?}", self.name, msg);
-
+    async fn handle(&self, msg: Event<TemperatureReading>) -> Result<(), Error> {
+        println!("Received message: {:?}", msg);
         Ok(())
     }
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    // Create a topic with exactly-once delivery guarantee
     let topic_config = TopicConfig {
         delivery_guarantee: DeliveryGuarantee::ExactlyOnce,
         ordering_attribute: None,
-        message_retention: Duration::from_secs(3600), // 1 hour
+        message_retention: Duration::from_secs(3600),
     };
 
     let topic: Topic<TemperatureReading> =
         Topic::new("temperature-readings".to_string(), topic_config);
 
-    // Create two handlers with different configurations
-    let handler1 = Arc::new(TemperatureHandler {
-        name: "Main Monitor".to_string(),
-    });
-
-    let handler2 = Arc::new(TemperatureHandler {
-        name: "Backup Monitor".to_string(),
-    });
-
-    // Create queued subscribers with different configurations
-    let subscriber1 = QueuedSubscriber::new(
-        handler1.clone(),
+    let subscriber = QueuedSubscriber::new(
+        Box::new(TemperatureHandler),
         SubscriptionConfig::new()
             .with_concurrency(2)
             .with_ack_deadline(Duration::from_secs(5))
             .with_delivery_guarantee(DeliveryGuarantee::ExactlyOnce),
-        1000, // queue size
+        1000,
     );
+    subscriber.start_processing().await?;
 
-    let subscriber2 = QueuedSubscriber::new(
-        handler2.clone(),
-        SubscriptionConfig::new()
-            .with_concurrency(1)
-            .with_ack_deadline(Duration::from_secs(5))
-            .with_delivery_guarantee(DeliveryGuarantee::ExactlyOnce),
-        1000, // queue size
-    );
+    topic.subscribe(Subscribers::from(subscriber)).await?;
 
-    // Start processing for both subscribers
-    subscriber1.start_processing().await?;
-    subscriber2.start_processing().await?;
-
-    // Subscribe both to the topic
-    topic.subscribe(subscriber1).await?;
-    topic.subscribe(subscriber2).await?;
-
-    // Simulate publishing some temperature readings
     let readings = vec![
         TemperatureReading {
             sensor_id: "SENSOR001".to_string(),
@@ -105,7 +70,6 @@ async fn main() -> Result<(), Error> {
         },
     ];
 
-    // Publish readings with some delay between them
     for reading in readings {
         match topic.publish(reading).await {
             Ok(msg_id) => {
@@ -116,11 +80,9 @@ async fn main() -> Result<(), Error> {
             }
         }
 
-        // Wait a bit between messages
         tokio::time::sleep(Duration::from_secs(1)).await;
     }
 
-    // Keep the program running to see the processing
     tokio::time::sleep(Duration::from_secs(5)).await;
 
     Ok(())

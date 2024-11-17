@@ -23,4 +23,8 @@ pub enum Error {
 
     #[error("internal error: {0}")]
     Internal(String),
+
+    // Shutdown error
+    #[error("shutdown error: {0}")]
+    Shutdown(String),
 }

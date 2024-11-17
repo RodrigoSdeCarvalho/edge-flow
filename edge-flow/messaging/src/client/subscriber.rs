@@ -1,28 +1,21 @@
+// TODO: Use websocket instead of HTTP for WebhookHandler
+
 use crate::prelude::{Error, Event};
 use axum::{response::IntoResponse, routing::post, Json, Router};
 use serde::de::DeserializeOwned;
-use std::marker::PhantomData;
 use std::sync::Arc;
 
-pub struct Subscriber<T> {
+pub struct Subscriber {
     base_url: String,
     client: Arc<reqwest::Client>,
-    _phantom: PhantomData<T>,
 }
 
-impl<T> Subscriber<T>
-where
-    T: DeserializeOwned + Send + Sync + Clone + 'static,
-{
+impl Subscriber {
     pub(crate) fn new(base_url: String, client: Arc<reqwest::Client>) -> Self {
-        Self {
-            base_url,
-            client,
-            _phantom: PhantomData,
-        }
+        Self { base_url, client }
     }
 
-    pub async fn subscribe<F>(
+    pub async fn subscribe<F, T>(
         &self,
         topic: &str,
         handle_name: &str,
@@ -30,6 +23,7 @@ where
     ) -> Result<SubscriptionHandle, Error>
     where
         F: Fn(Event<T>) -> Result<(), Error> + Send + Sync + 'static + Clone,
+        T: DeserializeOwned + Send + Sync + Clone + 'static,
     {
         let (addr, shutdown_tx) = self.start_callback_server(callback).await?;
 
@@ -51,12 +45,13 @@ where
         ))
     }
 
-    async fn start_callback_server<F>(
+    async fn start_callback_server<F, T>(
         &self,
         callback: F,
     ) -> Result<(std::net::SocketAddr, tokio::sync::mpsc::Sender<()>), Error>
     where
         F: Fn(Event<T>) -> Result<(), Error> + Send + Sync + 'static + Clone,
+        T: DeserializeOwned + Send + Sync + Clone + 'static,
     {
         let (shutdown_tx, mut shutdown_rx) = tokio::sync::mpsc::channel(1);
         let callback = Arc::new(callback);

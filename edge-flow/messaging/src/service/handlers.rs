@@ -1,3 +1,5 @@
+// TODO: Pass config to Subscription handler
+
 use crate::service::{topics::subscribe_by_topic_name, PubSubService};
 use axum::{
     extract::{Path, State},
@@ -28,13 +30,14 @@ pub struct SubscriptionRequest {
         (status = 400, description = "Bad request", body = String)
     )
 )]
-pub async fn publish<'a>(
-    State(service): State<Arc<PubSubService<'a>>>,
+pub async fn publish(
+    State(service): State<Arc<PubSubService>>,
     Path(topic_name): Path<String>,
     Json(raw_message): Json<Value>,
 ) -> impl IntoResponse {
     println!("Publishing to topic: {}", topic_name);
     match service
+        .bridge
         .topic_registry
         .try_publish_to(&topic_name, raw_message)
         .await
@@ -57,8 +60,8 @@ pub async fn publish<'a>(
         (status = 400, description = "Bad request", body = String)
     )
 )]
-pub async fn subscribe<'a>(
-    State(service): State<Arc<PubSubService<'a>>>,
+pub async fn subscribe(
+    State(service): State<Arc<PubSubService>>,
     Path(topic_name): Path<String>,
     Json(request): Json<SubscriptionRequest>,
 ) -> impl IntoResponse {
@@ -78,7 +81,7 @@ pub async fn subscribe<'a>(
         (status = 200, description = "List of topics", body = Vec<String>)
     )
 )]
-pub async fn list_topics<'a>(State(service): State<Arc<PubSubService<'a>>>) -> impl IntoResponse {
-    let topics = service.topic_registry.get_topic_names();
+pub async fn list_topics(State(service): State<Arc<PubSubService>>) -> impl IntoResponse {
+    let topics = service.bridge.topic_registry.get_topic_names();
     Json(topics).into_response()
 }

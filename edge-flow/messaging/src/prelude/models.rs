@@ -2,13 +2,6 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Debug, Clone)]
-pub struct Context {
-    pub trace_id: Option<String>,
-    pub correlation_id: Option<String>,
-    pub deadline: DateTime<Utc>,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Event<T>
 where

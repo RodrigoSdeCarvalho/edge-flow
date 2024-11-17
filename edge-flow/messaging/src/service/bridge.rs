@@ -1,19 +1,21 @@
-use crate::prelude::{
-    models::Context,
-    subscriber::{MessageHandler, QueuedSubscriber},
-    Error, Event, SubscriptionConfig,
+// TODO: Use websocket instead of HTTP for WebhookHandler
+
+use crate::{
+    prelude::{
+        subscriber::{MessageHandler, QueuedSubscriber, Subscribers},
+        Error, Event, SubscriptionConfig,
+    },
+    service::TopicRegistry,
 };
-use crate::service::TopicRegistry;
 use async_trait::async_trait;
 use serde::{de::DeserializeOwned, Serialize};
-use std::sync::Arc;
 
-pub struct ServiceBridge<'a> {
-    topic_registry: Arc<TopicRegistry<'a>>,
+pub struct ServiceBridge {
+    pub topic_registry: TopicRegistry,
 }
 
-impl<'a> ServiceBridge<'a> {
-    pub fn new(topic_registry: Arc<TopicRegistry<'a>>) -> Self {
+impl ServiceBridge {
+    pub fn new(topic_registry: TopicRegistry) -> Self {
         Self { topic_registry }
     }
 
@@ -30,11 +32,11 @@ impl<'a> ServiceBridge<'a> {
             .get_topic_by_name::<T>(topic_name)
             .ok_or_else(|| Error::Config("Topic not found or type mismatch".into()))?;
 
-        let handler = Arc::new(WebhookHandler::new(callback_url));
-        let subscriber = QueuedSubscriber::new(handler.clone(), SubscriptionConfig::new(), 1000);
+        let handler = Box::new(WebhookHandler::new(callback_url));
+        let subscriber = QueuedSubscriber::new(handler, SubscriptionConfig::new(), 1000);
 
         subscriber.start_processing().await?;
-        topic.subscribe(subscriber).await?;
+        topic.subscribe(Subscribers::from(subscriber)).await?;
 
         Ok(())
     }
@@ -60,7 +62,7 @@ impl<T> MessageHandler<T> for WebhookHandler
 where
     T: Send + Sync + Serialize + DeserializeOwned + Clone + 'static,
 {
-    async fn handle(&self, _ctx: &Context, msg: Event<T>) -> Result<(), Error> {
+    async fn handle(&self, msg: Event<T>) -> Result<(), Error> {
         println!("Sending message to: {}", self.callback_url);
         self.client
             .post(&self.callback_url)

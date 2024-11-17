@@ -41,13 +41,13 @@ macro_rules! define_topics {
             }
         ),* $(,)?
     ) => {
-        pub struct TopicRegistry<'a> {
+        pub struct TopicRegistry {
             $(
-                pub $topic: Arc<Topic<'a, $type>>,
+                pub $topic: Arc<Topic<$type>>,
             )*
         }
 
-        impl<'a> TopicRegistry<'a> {
+        impl TopicRegistry {
             pub fn new() -> Self {
                 Self {
                     $(
@@ -81,7 +81,7 @@ macro_rules! define_topics {
 
             pub fn get_topic_by_name<T>(&self, name: &str) -> Option<&Arc<Topic<T>>>
             where
-                T: 'static + Send + Sync
+                T: Clone + Send + Sync + 'static
             {
                 match name {
                     $(
@@ -103,8 +103,8 @@ macro_rules! define_topics {
             }
         }
 
-        pub async fn subscribe_by_topic_name<'a>(
-            service: &PubSubService<'a>,
+        pub async fn subscribe_by_topic_name(
+            service: &PubSubService,
             topic_name: &str,
             callback_url: String
         ) -> Result<(), Error> {

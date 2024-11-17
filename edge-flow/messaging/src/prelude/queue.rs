@@ -1,10 +1,9 @@
-use crate::prelude::error::Error;
-use crate::prelude::models::Event;
+use crate::prelude::{error::Error, models::Event};
 use std::collections::VecDeque;
-use std::sync::Arc;
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 
+#[derive(Debug, Clone)]
 pub struct MessageQueue<T>
 where
     T: Clone + Send,
@@ -139,30 +138,26 @@ mod tests {
     async fn test_batch_operations() {
         let queue = MessageQueue::<i32>::new(5);
 
-        // Create test events
         let events: Vec<_> = (0..3)
             .map(|i| create_test_event(i, &format!("test{}", i)))
             .collect();
 
-        // Test batch enqueue
         let enqueued = queue.enqueue_batch(&events).await.unwrap();
         assert_eq!(enqueued, 3);
         assert_eq!(queue.len().await, 3);
 
-        // Test batch dequeue
         let dequeued = queue.dequeue_batch(2).await;
         assert_eq!(dequeued.len(), 2);
         assert_eq!(dequeued[0].data.value, 0);
         assert_eq!(dequeued[1].data.value, 1);
         assert_eq!(queue.len().await, 1);
 
-        // Test batch enqueue with capacity limit
         let more_events: Vec<_> = (3..8)
             .map(|i| create_test_event(i, &format!("test{}", i)))
             .collect();
 
         let enqueued = queue.enqueue_batch(&more_events).await.unwrap();
-        assert_eq!(enqueued, 4); // Only 4 spots left in queue
+        assert_eq!(enqueued, 4);
         assert!(queue.is_full().await);
     }
 
@@ -180,24 +175,20 @@ mod tests {
         let queue = MessageQueue::<i32>::new(2);
         let event = create_test_event(42, "test1");
 
-        // Test enqueue
         assert!(queue.enqueue(event.clone()).await.is_ok());
         assert_eq!(queue.len().await, 1);
         assert!(!queue.is_empty().await);
         assert!(!queue.is_full().await);
 
-        // Test dequeue
         let dequeued = queue.dequeue().await.unwrap();
         assert_eq!(dequeued.data.value, 42);
         assert!(queue.is_empty().await);
 
-        // Test capacity
         assert!(queue.enqueue(event.clone()).await.is_ok());
         assert!(queue.enqueue(event.clone()).await.is_ok());
         assert!(queue.enqueue(event.clone()).await.is_err());
         assert!(queue.is_full().await);
 
-        // Test clear
         queue.clear().await;
         assert!(queue.is_empty().await);
     }

@@ -29,26 +29,15 @@ use utoipa_swagger_ui::SwaggerUi;
 )]
 struct ApiDoc;
 
-pub struct PubSubService<'a>
-where
-    'a: 'static,
-{
-    pub topic_registry: Arc<TopicRegistry<'a>>,
-    bridge: Arc<ServiceBridge<'a>>,
+pub struct PubSubService {
+    bridge: Arc<ServiceBridge>,
 }
 
-impl<'a> PubSubService<'a>
-where
-    'a: 'static,
-{
+impl PubSubService {
     pub fn new() -> Self {
-        let topic_registry = Arc::new(TopicRegistry::new());
-        let bridge = Arc::new(ServiceBridge::new(topic_registry.clone()));
+        let bridge = Arc::new(ServiceBridge::new(TopicRegistry::new()));
 
-        Self {
-            topic_registry,
-            bridge,
-        }
+        Self { bridge }
     }
 
     pub async fn run(self, addr: SocketAddr) {

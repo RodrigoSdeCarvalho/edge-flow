@@ -1,28 +1,22 @@
 use crate::prelude::Error;
 use reqwest::Client;
 use serde::Serialize;
-use std::marker::PhantomData;
 use std::sync::Arc;
 
-pub struct Publisher<T> {
+pub struct Publisher {
     base_url: String,
     client: Arc<Client>,
-    _phantom: PhantomData<T>,
 }
 
-impl<T> Publisher<T>
-where
-    T: Serialize + Send + Sync + 'static,
-{
+impl Publisher {
     pub(crate) fn new(base_url: String, client: Arc<Client>) -> Self {
-        Self {
-            base_url,
-            client,
-            _phantom: PhantomData,
-        }
+        Self { base_url, client }
     }
 
-    pub async fn publish(&self, topic: &str, message: T) -> Result<String, Error> {
+    pub async fn publish<T>(&self, topic: &str, message: T) -> Result<String, Error>
+    where
+        T: Serialize + Send + Sync,
+    {
         let url = format!("{}/topics/{}/publish", self.base_url, topic);
 
         println!("Publishing message to topic: {}", topic);

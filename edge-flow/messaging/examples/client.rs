@@ -1,15 +1,18 @@
-use messaging::client::{HandlerStore, PubSubClient};
-use messaging::topics::LogMessage;
+use messaging::{
+    client::{HandlerStore, PubSubClient},
+    topics::LogMessage,
+    Event,
+};
 
 #[tokio::main]
 async fn main() {
     let client = PubSubClient::new("http://localhost:3000".to_string());
-    let publisher = client.publisher::<LogMessage>();
+    let publisher = client.publisher();
     let mut store = HandlerStore::new();
 
-    let subscriber = client.subscriber::<LogMessage>();
+    let subscriber = client.subscriber();
     let handle_logs = subscriber
-        .subscribe("logs", "handle_logs", |event| {
+        .subscribe("logs", "handle_logs", |event: Event<LogMessage>| {
             println!("Received event: {:?}", event);
             println!("Message: {:?}", event.event_id);
             Ok(())

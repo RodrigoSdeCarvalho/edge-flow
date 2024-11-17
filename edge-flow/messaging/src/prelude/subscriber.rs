@@ -1,121 +1,122 @@
+// TODO: Use retry policy
+
+// TODO: Make Subscriber customizable
+
+// TODO: Fix same event being processed multiple times
+
+// TODO: Fix unending workers when subscriber is dropped
+
+// TODO: Prevent multiple `start_processing` creating multiple workers each time
+
+// TODO: Add notify for empty queue and optional timeout on shutdown
+
 use crate::prelude::{
     config::{DeliveryGuarantee, SubscriptionConfig},
     error::Error,
-    models::{Context, Event},
+    models::Event,
     queue::MessageQueue,
 };
 use async_trait::async_trait;
-use chrono::Utc;
-use std::{marker::PhantomData, sync::Arc, time::Duration};
+use derive_more::derive::From;
+use std::{
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 use tokio::time::timeout;
 
-// TODO: Use retry policy
-
-// TODO: Make Subscriber customizable and Batch use Config.
-
 #[async_trait]
-pub trait MessageHandler<T>: Send + Sync
-where
-    T: Clone + Send + Sync + 'static,
-{
-    async fn handle(&self, ctx: &Context, msg: Event<T>) -> Result<(), Error>;
-}
-
-#[async_trait]
-pub trait BatchMessageHandler<T>: Send + Sync
-where
-    T: Clone + Send + Sync + 'static,
-{
-    async fn handle_batch(&self, ctx: &Context, msgs: Vec<Event<T>>) -> Result<(), Error>;
-}
-
-#[async_trait]
-pub trait Subscriber<'a, T>: Send + Sync
+pub trait Subscriber<T>: Send + Sync
 where
     T: Clone + Send + Sync,
 {
     async fn receive(&self, event: Event<T>) -> Result<(), Error>;
 }
 
-pub struct FunctionSubscriber<T, F>
+#[derive(From)]
+pub enum Subscribers<T>
 where
-    T: Clone + Send + Sync + 'static,
-    F: Fn(Event<T>) -> Result<(), Error> + Send + Sync,
+    T: Clone + Send + Sync,
 {
-    handler: F,
-    _phantom: PhantomData<T>,
+    Queued(QueuedSubscriber<T>),
 }
 
-impl<T, F> FunctionSubscriber<T, F>
+#[async_trait]
+impl<T> Subscriber<T> for Subscribers<T>
 where
     T: Clone + Send + Sync + 'static,
-    F: Fn(Event<T>) -> Result<(), Error> + Send + Sync,
 {
-    pub fn new(handler: F) -> Self {
-        Self {
-            handler,
-            _phantom: PhantomData,
+    async fn receive(&self, event: Event<T>) -> Result<(), Error> {
+        match self {
+            Self::Queued(inner) => Subscriber::receive(inner, event).await,
         }
     }
 }
 
 #[async_trait]
-impl<'a, T, F> Subscriber<'a, T> for FunctionSubscriber<T, F>
+pub trait MessageHandler<T>: Send + Sync
+where
+    T: Clone + Send + Sync + 'static,
+{
+    async fn handle(&self, msg: Event<T>) -> Result<(), Error>;
+}
+
+pub struct QueuedSubscriber<T>
 where
     T: Clone + Send + Sync,
-    F: Fn(Event<T>) -> Result<(), Error> + Send + Sync,
 {
-    async fn receive(&self, event: Event<T>) -> Result<(), Error> {
-        (self.handler)(event)
-    }
-}
-
-pub struct QueuedSubscriber<T, H>
-where
-    T: Clone + Send + Sync + 'static,
-    H: MessageHandler<T>,
-{
-    queue: Arc<MessageQueue<T>>,
-    handler: Arc<H>,
+    queue: MessageQueue<T>,
+    handler: Arc<dyn MessageHandler<T>>,
     config: SubscriptionConfig,
+    workers_active: Arc<AtomicBool>,
+    accepting_messages: Arc<AtomicBool>,
 }
 
-impl<T, H> QueuedSubscriber<T, H>
+impl<T> QueuedSubscriber<T>
 where
     T: Clone + Send + Sync + 'static,
-    H: MessageHandler<T> + 'static,
 {
-    pub fn new(handler: Arc<H>, config: SubscriptionConfig, queue_size: usize) -> Self {
+    pub fn new(
+        handler: Box<dyn MessageHandler<T>>,
+        config: SubscriptionConfig,
+        queue_size: usize,
+    ) -> Self {
         Self {
-            queue: Arc::new(MessageQueue::new(queue_size)),
-            handler,
+            queue: MessageQueue::new(queue_size),
+            handler: Arc::from(handler),
             config,
+            workers_active: Arc::new(AtomicBool::new(false)),
+            accepting_messages: Arc::new(AtomicBool::new(true)),
         }
     }
 
     pub async fn start_processing(&self) -> Result<(), Error> {
+        if self.workers_active.load(Ordering::SeqCst) {
+            return Ok(());
+        }
+
         let queue = self.queue.clone();
         let handler = self.handler.clone();
         let max_concurrency = self.config.max_concurrency;
         let ack_deadline = self.config.ack_deadline;
+        let workers_active = self.workers_active.clone();
+
+        self.workers_active.store(true, Ordering::SeqCst);
+        self.accepting_messages.store(true, Ordering::SeqCst);
 
         for _ in 0..max_concurrency {
             let queue = queue.clone();
             let handler = handler.clone();
+            let active = workers_active.clone();
 
             tokio::spawn(async move {
-                loop {
+                while active.load(Ordering::SeqCst) {
                     if let Some(event) =
                         queue.dequeue_with_timeout(Duration::from_millis(100)).await
                     {
-                        let ctx = Context {
-                            trace_id: event.data.metadata.trace_id.clone(),
-                            correlation_id: event.data.metadata.correlation_id.clone(),
-                            deadline: Utc::now()
-                                + chrono::Duration::from_std(ack_deadline).unwrap(),
-                        };
-
-                        match timeout(ack_deadline, handler.handle(&ctx, event.clone())).await {
+                        match timeout(ack_deadline, handler.handle(event)).await {
                             Ok(Ok(_)) => {}
                             Ok(Err(_)) => {
                                 // Handle retry logic here if needed
@@ -131,36 +132,42 @@ where
 
         Ok(())
     }
+
+    pub async fn shutdown(&self, timeout_duration: Duration) {
+        self.accepting_messages.store(false, Ordering::SeqCst);
+
+        let _ = timeout(timeout_duration, async {
+            while !self.queue.is_empty().await {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await;
+
+        self.workers_active.store(false, Ordering::SeqCst);
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
 }
 
 #[async_trait]
-impl<'a, T, H> Subscriber<'a, T> for QueuedSubscriber<T, H>
+impl<T> Subscriber<T> for QueuedSubscriber<T>
 where
     T: Clone + Send + Sync + 'static,
-    H: MessageHandler<T>,
 {
     async fn receive(&self, event: Event<T>) -> Result<(), Error> {
+        if !self.accepting_messages.load(Ordering::SeqCst) {
+            return Err(Error::Shutdown("Subscriber is shutting down".to_string()));
+        }
+
         let is_exactly_once = matches!(
             self.config.delivery_guarantee,
             DeliveryGuarantee::ExactlyOnce
         );
 
         if is_exactly_once {
-            let ctx = Context {
-                trace_id: event.data.metadata.trace_id.clone(),
-                correlation_id: event.data.metadata.correlation_id.clone(),
-                deadline: Utc::now()
-                    + chrono::Duration::from_std(self.config.ack_deadline).unwrap(),
-            };
-
-            match timeout(
-                self.config.ack_deadline,
-                self.handler.handle(&ctx, event.clone()),
-            )
-            .await
-            {
+            match timeout(self.config.ack_deadline, self.handler.handle(event)).await {
                 Ok(Ok(_)) => Ok(()),
-                Ok(Err(e)) => Err(e),
+                Ok(Err(e)) => Err(Error::Handler(e.to_string())),
                 Err(_) => Err(Error::Timeout),
             }
         } else {
@@ -169,171 +176,112 @@ where
     }
 }
 
-pub struct BatchSubscriber<T, H>
-where
-    T: Clone + Send + Sync + 'static,
-    H: BatchMessageHandler<T>,
-{
-    queue: Arc<MessageQueue<T>>,
-    handler: Arc<H>,
-    batch_size: usize,
-    batch_timeout: Duration,
-}
-
-impl<T, H> BatchSubscriber<T, H>
-where
-    T: Clone + Send + Sync + 'static,
-    H: BatchMessageHandler<T> + 'static,
-{
-    pub fn new(
-        handler: Arc<H>,
-        batch_size: usize,
-        batch_timeout: Duration,
-        queue_size: usize,
-    ) -> Self {
-        Self {
-            queue: Arc::new(MessageQueue::new(queue_size)),
-            handler,
-            batch_size,
-            batch_timeout,
-        }
-    }
-
-    pub async fn start_processing(&self) -> Result<(), Error> {
-        let queue = self.queue.clone();
-        let handler = self.handler.clone();
-        let batch_size = self.batch_size;
-        let batch_timeout = self.batch_timeout;
-
-        tokio::spawn(async move {
-            loop {
-                let batch = queue
-                    .dequeue_batch_with_timeout(batch_size, batch_timeout)
-                    .await;
-
-                if !batch.is_empty() {
-                    let ctx = Context {
-                        trace_id: None,
-                        correlation_id: None,
-                        deadline: Utc::now() + chrono::Duration::from_std(batch_timeout).unwrap(),
-                    };
-
-                    match handler.handle_batch(&ctx, batch.clone()).await {
-                        Ok(_) => {}
-                        Err(e) => {
-                            println!("Error in batch handler: {:?}", e);
-                        }
-                    }
-                }
-            }
-        });
-
-        Ok(())
-    }
-}
-
-#[async_trait]
-impl<'a, T, H> Subscriber<'a, T> for BatchSubscriber<T, H>
-where
-    T: Clone + Send + Sync + 'static,
-    H: BatchMessageHandler<T>,
-{
-    async fn receive(&self, event: Event<T>) -> Result<(), Error> {
-        self.queue.enqueue(event).await
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::prelude::models::{Data, Metadata};
+    use chrono::Utc;
     use std::collections::HashMap;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
 
-    struct TestHandler(Arc<AtomicUsize>);
+    struct TestHandler {
+        counter: Arc<AtomicUsize>,
+    }
 
     #[async_trait]
-    impl<T: Clone + Send + Sync + 'static> MessageHandler<T> for TestHandler {
-        async fn handle(&self, _ctx: &Context, _msg: Event<T>) -> Result<(), Error> {
-            self.0.fetch_add(1, Ordering::SeqCst);
+    impl MessageHandler<i32> for TestHandler {
+        async fn handle(&self, _: Event<i32>) -> Result<(), Error> {
+            self.counter.fetch_add(1, Ordering::SeqCst);
             Ok(())
         }
     }
 
-    struct TestBatchHandler(Arc<AtomicUsize>);
+    struct ErrorHandler;
 
     #[async_trait]
-    impl<T: Clone + Send + Sync + 'static> BatchMessageHandler<T> for TestBatchHandler {
-        async fn handle_batch(&self, _ctx: &Context, msgs: Vec<Event<T>>) -> Result<(), Error> {
-            self.0.fetch_add(msgs.len(), Ordering::SeqCst);
-            Ok(())
+    impl MessageHandler<i32> for ErrorHandler {
+        async fn handle(&self, _: Event<i32>) -> Result<(), Error> {
+            Err(Error::Handler("Test error".to_string()))
         }
     }
 
-    #[tokio::test]
-    async fn test_queued_subscriber() {
-        let counter = Arc::new(AtomicUsize::new(0));
-        let handler = Arc::new(TestHandler(counter.clone()));
-
-        let config = SubscriptionConfig::new()
-            .with_concurrency(2)
-            .with_ack_deadline(Duration::from_secs(1));
-
-        let subscriber = QueuedSubscriber::new(handler, config, 10);
-        subscriber.start_processing().await.unwrap();
-
-        let event = Event {
+    fn create_test_event() -> Event<i32> {
+        Event {
             data: Data {
                 value: 42,
-                timestamp: Utc::now(),
                 metadata: Metadata {
                     source: "test".to_string(),
                     correlation_id: None,
                     trace_id: None,
                     attributes: HashMap::new(),
                 },
+                timestamp: Utc::now(),
             },
             event_type: "test".to_string(),
             event_id: "test1".to_string(),
             event_time: Utc::now(),
             ordering_key: None,
-        };
-
-        subscriber.receive(event).await.unwrap();
-
-        tokio::time::sleep(Duration::from_millis(100)).await;
-        assert_eq!(counter.load(Ordering::SeqCst), 1);
+        }
     }
 
     #[tokio::test]
-    async fn test_batch_subscriber() {
+    async fn test_queued_subscriber() {
         let counter = Arc::new(AtomicUsize::new(0));
-        let handler = Arc::new(TestBatchHandler(counter.clone()));
+        let handler = TestHandler {
+            counter: counter.clone(),
+        };
 
-        let subscriber = BatchSubscriber::new(handler, 2, Duration::from_millis(100), 10);
+        let config = SubscriptionConfig::new()
+            .with_concurrency(2)
+            .with_ack_deadline(Duration::from_secs(1))
+            .with_delivery_guarantee(DeliveryGuarantee::AtLeastOnce);
+
+        let subscriber = QueuedSubscriber::new(Box::new(handler), config, 10);
         subscriber.start_processing().await.unwrap();
 
-        for i in 0..3 {
-            let event = Event {
-                data: Data {
-                    value: i,
-                    timestamp: Utc::now(),
-                    metadata: Metadata {
-                        source: "test".to_string(),
-                        correlation_id: None,
-                        trace_id: None,
-                        attributes: HashMap::new(),
-                    },
-                },
-                event_type: "test".to_string(),
-                event_id: format!("test{}", i),
-                event_time: Utc::now(),
-                ordering_key: None,
-            };
-            subscriber.receive(event).await.unwrap();
-        }
+        subscriber.receive(create_test_event()).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(200)).await;
 
-        tokio::time::sleep(Duration::from_millis(300)).await;
-        assert_eq!(counter.load(Ordering::SeqCst), 3);
+        assert_eq!(counter.load(Ordering::SeqCst), 1);
+
+        subscriber.shutdown(Duration::from_secs(1)).await;
+    }
+
+    #[tokio::test]
+    async fn test_handler_error() {
+        let config = SubscriptionConfig::new()
+            .with_concurrency(1)
+            .with_ack_deadline(Duration::from_secs(1))
+            .with_delivery_guarantee(DeliveryGuarantee::AtLeastOnce);
+
+        let subscriber = QueuedSubscriber::new(Box::new(ErrorHandler), config, 10);
+        subscriber.start_processing().await.unwrap();
+
+        subscriber.receive(create_test_event()).await.unwrap();
+
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        subscriber.shutdown(Duration::from_secs(1)).await;
+    }
+
+    #[tokio::test]
+    async fn test_exactly_once_delivery() {
+        let counter = Arc::new(AtomicUsize::new(0));
+        let handler = TestHandler {
+            counter: counter.clone(),
+        };
+
+        let config = SubscriptionConfig::new()
+            .with_concurrency(1)
+            .with_ack_deadline(Duration::from_secs(1))
+            .with_delivery_guarantee(DeliveryGuarantee::ExactlyOnce);
+
+        let subscriber = QueuedSubscriber::new(Box::new(handler), config, 10);
+
+        subscriber.receive(create_test_event()).await.unwrap();
+        assert_eq!(counter.load(Ordering::SeqCst), 1);
+
+        subscriber.shutdown(Duration::from_secs(1)).await;
     }
 }

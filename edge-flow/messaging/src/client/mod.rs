@@ -6,7 +6,6 @@ pub use subscriber::HandlerStore;
 pub use subscriber::Subscriber;
 
 use reqwest::Client;
-use serde::{de::DeserializeOwned, Serialize};
 use std::sync::Arc;
 
 pub struct PubSubClient {
@@ -22,17 +21,11 @@ impl PubSubClient {
         }
     }
 
-    pub fn publisher<T>(&self) -> Publisher<T>
-    where
-        T: Send + Sync + Serialize + 'static,
-    {
+    pub fn publisher(&self) -> Publisher {
         Publisher::new(self.base_url.clone(), self.client.clone())
     }
 
-    pub fn subscriber<T>(&self) -> Subscriber<T>
-    where
-        T: Send + Sync + DeserializeOwned + Clone + 'static,
-    {
+    pub fn subscriber(&self) -> Subscriber {
         Subscriber::new(self.base_url.clone(), self.client.clone())
     }
 }

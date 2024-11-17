@@ -1,7 +1,9 @@
-use crate::prelude::config::TopicConfig;
-use crate::prelude::error::Error;
-use crate::prelude::models::{Data, Event, Metadata};
-use crate::prelude::subscriber::Subscriber;
+use crate::prelude::{
+    config::TopicConfig,
+    error::Error,
+    models::{Data, Event, Metadata},
+    subscriber::{Subscriber, Subscribers},
+};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
@@ -36,15 +38,18 @@ use tokio::sync::Mutex;
     the event publishing framework.
 */
 
-pub struct Topic<'a, T> {
+pub struct Topic<T>
+where
+    T: Clone + Send + Sync,
+{
     name: String,
     config: TopicConfig,
-    subscribers: Mutex<Vec<Box<dyn Subscriber<'a, T> + Send + Sync + 'a>>>,
+    subscribers: Mutex<Vec<Subscribers<T>>>,
 }
 
-impl<'a, T> Topic<'a, T>
+impl<T> Topic<T>
 where
-    T: Serialize + for<'de> Deserialize<'de> + Clone + Send + Sync + 'a,
+    T: Serialize + for<'de> Deserialize<'de> + Clone + Send + Sync + 'static,
 {
     pub fn new(name: String, config: TopicConfig) -> Self {
         Self {
@@ -143,12 +148,12 @@ where
         }
     }
 
-    pub async fn subscribe<S>(&self, subscriber: S) -> Result<(), Error>
+    pub async fn subscribe(&self, subscriber: Subscribers<T>) -> Result<(), Error>
     where
-        S: Subscriber<'a, T> + Send + Sync + 'a,
+        T: Clone + Send + Sync,
     {
         let mut subscribers = self.subscribers.lock().await;
-        subscribers.push(Box::new(subscriber));
+        subscribers.push(subscriber);
         Ok(())
     }
 
@@ -172,7 +177,10 @@ where
     }
 }
 
-impl<'a, T> std::fmt::Debug for Topic<'a, T> {
+impl<T> std::fmt::Debug for Topic<T>
+where
+    T: Clone + Send + Sync,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Topic")
             .field("name", &self.name)
@@ -185,15 +193,14 @@ impl<'a, T> std::fmt::Debug for Topic<'a, T> {
 mod tests {
     use super::*;
     use crate::prelude::config::{DeliveryGuarantee, SubscriptionConfig};
-    use crate::prelude::models::{Context, Event};
-    use crate::prelude::subscriber::{
-        BatchMessageHandler, BatchSubscriber, MessageHandler, QueuedSubscriber,
-    };
+    use crate::prelude::subscriber::{MessageHandler, QueuedSubscriber};
     use assert_matches::assert_matches;
     use async_trait::async_trait;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
     use std::time::Duration;
+
+    static TEST_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
     #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
     struct TestMessage {
@@ -208,7 +215,7 @@ mod tests {
 
     #[async_trait]
     impl MessageHandler<TestMessage> for TestHandler {
-        async fn handle(&self, _ctx: &Context, msg: Event<TestMessage>) -> Result<(), Error> {
+        async fn handle(&self, msg: Event<TestMessage>) -> Result<(), Error> {
             if self.should_fail {
                 return Err(Error::Handler("Simulated failure".to_string()));
             }
@@ -219,23 +226,24 @@ mod tests {
         }
     }
 
-    struct TestBatchHandler {
-        counter: Arc<AtomicUsize>,
-        should_fail: bool,
-    }
+    struct SuccessfulHandler;
 
     #[async_trait]
-    impl BatchMessageHandler<TestMessage> for TestBatchHandler {
-        async fn handle_batch(
-            &self,
-            _ctx: &Context,
-            msgs: Vec<Event<TestMessage>>,
-        ) -> Result<(), Error> {
-            if self.should_fail {
-                return Err(Error::Handler("Simulated failure".to_string()));
-            }
-            self.counter.fetch_add(msgs.len(), Ordering::SeqCst);
+    impl MessageHandler<TestMessage> for SuccessfulHandler {
+        async fn handle(&self, msg: Event<TestMessage>) -> Result<(), Error> {
+            assert_eq!(msg.data.value.value, 42);
+            assert_eq!(msg.data.value.text, "test");
+            TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
             Ok(())
+        }
+    }
+
+    struct FailingHandler;
+
+    #[async_trait]
+    impl MessageHandler<TestMessage> for FailingHandler {
+        async fn handle(&self, _msg: Event<TestMessage>) -> Result<(), Error> {
+            Err(Error::Handler("Simulated failure".to_string()))
         }
     }
 
@@ -248,15 +256,12 @@ mod tests {
         };
 
         let topic: Topic<TestMessage> = Topic::new("test-topic".to_string(), config);
-        let counter = Arc::new(AtomicUsize::new(0));
-
-        let handler = Arc::new(TestHandler {
-            counter: counter.clone(),
-            should_fail: false,
-        });
 
         let subscriber = QueuedSubscriber::new(
-            handler.clone(),
+            Box::new(TestHandler {
+                counter: Arc::new(AtomicUsize::new(0)),
+                should_fail: false,
+            }),
             SubscriptionConfig::new()
                 .with_concurrency(1)
                 .with_ack_deadline(Duration::from_secs(1)),
@@ -264,7 +269,10 @@ mod tests {
         );
 
         subscriber.start_processing().await.unwrap();
-        topic.subscribe(subscriber).await.unwrap();
+        topic
+            .subscribe(Subscribers::Queued(subscriber))
+            .await
+            .unwrap();
         assert_eq!(topic.subscriber_count().await, 1);
 
         let message = TestMessage {
@@ -275,9 +283,8 @@ mod tests {
         let msg_id = topic.publish(message).await.unwrap();
         assert!(!msg_id.is_empty());
 
-        // Give some time for async processing
         tokio::time::sleep(Duration::from_millis(100)).await;
-        assert_eq!(counter.load(Ordering::SeqCst), 1);
+        assert_eq!(TEST_COUNTER.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]
@@ -290,22 +297,20 @@ mod tests {
 
         let topic: Topic<TestMessage> = Topic::new("test-topic".to_string(), config);
 
-        let handler = Arc::new(TestHandler {
-            counter: Arc::new(AtomicUsize::new(0)),
-            should_fail: true,
-        });
-
         let subscriber = QueuedSubscriber::new(
-            handler.clone(),
+            Box::new(FailingHandler),
             SubscriptionConfig::new()
                 .with_concurrency(1)
                 .with_ack_deadline(Duration::from_secs(1))
-                .with_delivery_guarantee(DeliveryGuarantee::ExactlyOnce), // Add this
+                .with_delivery_guarantee(DeliveryGuarantee::ExactlyOnce),
             10,
         );
 
         subscriber.start_processing().await.unwrap();
-        topic.subscribe(subscriber).await.unwrap();
+        topic
+            .subscribe(Subscribers::Queued(subscriber))
+            .await
+            .unwrap();
 
         let message = TestMessage {
             value: 42,
@@ -325,29 +330,18 @@ mod tests {
         };
 
         let topic: Topic<TestMessage> = Topic::new("test-topic".to_string(), config);
-        let counter = Arc::new(AtomicUsize::new(0));
-
-        // Add a successful subscriber
-        let successful_handler = Arc::new(TestHandler {
-            counter: counter.clone(),
-            should_fail: false,
-        });
+        TEST_COUNTER.store(0, Ordering::SeqCst);
 
         let successful_subscriber = QueuedSubscriber::new(
-            successful_handler,
+            Box::new(SuccessfulHandler),
             SubscriptionConfig::new()
                 .with_concurrency(1)
                 .with_ack_deadline(Duration::from_secs(1)),
             10,
         );
 
-        let failing_handler = Arc::new(TestHandler {
-            counter: Arc::new(AtomicUsize::new(0)),
-            should_fail: true,
-        });
-
         let failing_subscriber = QueuedSubscriber::new(
-            failing_handler,
+            Box::new(FailingHandler),
             SubscriptionConfig::new()
                 .with_concurrency(1)
                 .with_ack_deadline(Duration::from_secs(1)),
@@ -357,74 +351,36 @@ mod tests {
         successful_subscriber.start_processing().await.unwrap();
         failing_subscriber.start_processing().await.unwrap();
 
-        topic.subscribe(successful_subscriber).await.unwrap();
-        topic.subscribe(failing_subscriber).await.unwrap();
+        topic
+            .subscribe(Subscribers::Queued(successful_subscriber))
+            .await
+            .unwrap();
+        topic
+            .subscribe(Subscribers::Queued(failing_subscriber))
+            .await
+            .unwrap();
 
         let message = TestMessage {
             value: 42,
             text: "test".to_string(),
         };
 
-        // Publishing should succeed because at least one subscriber succeeded
         let result = topic.publish(message).await;
         assert!(result.is_ok());
 
-        // Give some time for async processing
         tokio::time::sleep(Duration::from_millis(100)).await;
-        assert_eq!(counter.load(Ordering::SeqCst), 1);
-    }
-
-    #[tokio::test]
-    async fn test_batch_processing() {
-        let config = TopicConfig::default();
-        let topic: Topic<TestMessage> = Topic::new("test-topic".to_string(), config);
-        let counter = Arc::new(AtomicUsize::new(0));
-
-        let handler = Arc::new(TestBatchHandler {
-            counter: counter.clone(),
-            should_fail: false,
-        });
-
-        let batch_subscriber = BatchSubscriber::new(
-            handler,
-            2,                         // batch size
-            Duration::from_millis(50), // batch timeout
-            10,                        // queue size
-        );
-
-        batch_subscriber.start_processing().await.unwrap();
-        topic.subscribe(batch_subscriber).await.unwrap();
-
-        // Publish multiple messages
-        for i in 0..3 {
-            let message = TestMessage {
-                value: 42,
-                text: format!("test{}", i),
-            };
-            topic.publish(message).await.unwrap();
-        }
-
-        // Give time for batch processing
-        tokio::time::sleep(Duration::from_millis(200)).await;
-        assert_eq!(counter.load(Ordering::SeqCst), 3);
+        assert_eq!(TEST_COUNTER.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]
     async fn test_unsubscribe_all() {
         let config = TopicConfig::default();
         let topic: Topic<TestMessage> = Topic::new("test-topic".to_string(), config);
-        let counter = Arc::new(AtomicUsize::new(0));
+        TEST_COUNTER.store(0, Ordering::SeqCst);
 
-        // Add multiple subscribers
         for _ in 0..3 {
-            // Changed i to _ to fix unused variable warning
-            let handler = Arc::new(TestHandler {
-                counter: counter.clone(),
-                should_fail: false,
-            });
-
             let subscriber = QueuedSubscriber::new(
-                handler.clone(), // Clone here
+                Box::new(SuccessfulHandler),
                 SubscriptionConfig::new()
                     .with_concurrency(1)
                     .with_ack_deadline(Duration::from_secs(1)),
@@ -432,12 +388,14 @@ mod tests {
             );
 
             subscriber.start_processing().await.unwrap();
-            topic.subscribe(subscriber).await.unwrap();
+            topic
+                .subscribe(Subscribers::Queued(subscriber))
+                .await
+                .unwrap();
         }
 
         assert_eq!(topic.subscriber_count().await, 3);
 
-        // Unsubscribe all
         topic.unsubscribe_all().await.unwrap();
         assert_eq!(topic.subscriber_count().await, 0);
     }
@@ -474,7 +432,6 @@ mod tests {
             text: "test".to_string(),
         };
 
-        // Should fail because there are no subscribers for ExactlyOnce
         let result = topic.publish(message).await;
         assert_matches!(result, Err(Error::Transport(_)));
     }
